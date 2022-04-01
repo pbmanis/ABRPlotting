@@ -1,5 +1,6 @@
-import numpy as np
 import operator as op
+
+import numpy as np
 
 
 ################################################################################
@@ -7,13 +8,13 @@ import operator as op
 ################################################################################
 def nzc_temporal_filtered(fs, waveform, min_spacing=0.3):
     nzc_indices = nzc(waveform)
-    p_indices = cluster(nzc_indices, waveform[nzc_indices], min_spacing*1e-3*fs)
+    p_indices = cluster(nzc_indices, waveform[nzc_indices], min_spacing * 1e-3 * fs)
     return np.asarray(nzc_indices[p_indices])
 
 
 def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3):
 
-    min_noise = waveform[:int(1e-3*fs)].std()*dev
+    min_noise = waveform[: int(1e-3 * fs)].std() * dev
 
     p_ind = nzc(waveform)
     n_ind = nzc(-waveform)
@@ -35,7 +36,7 @@ def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3):
 
     # If algorithm is too agressive, comment out the following two lines
     if len(ind) > 5:
-        f_ind = cluster(ind, waveform[ind], min_spacing*1e-3*fs)
+        f_ind = cluster(ind, waveform[ind], min_spacing * 1e-3 * fs)
         ind = ind[f_ind]
     return np.asarray(ind)
 
@@ -43,9 +44,17 @@ def nzc_noise_filtered(fs, waveform, dev=1.0, min_spacing=0.3):
 ################################################################################
 # Peak finding algorithms
 ################################################################################
-def find_np(fs, waveform, nzc_algorithm='noise', guess_algorithm='basic', n=5,
-            bounds=None, nzc_algorithm_kw=None, guess_algorithm_kw=None):
-    '''
+def find_np(
+    fs,
+    waveform,
+    nzc_algorithm="noise",
+    guess_algorithm="basic",
+    n=5,
+    bounds=None,
+    nzc_algorithm_kw=None,
+    guess_algorithm_kw=None,
+):
+    """
     Estimate the position of peaks in the waveform
 
     Parameters
@@ -114,7 +123,7 @@ def find_np(fs, waveform, nzc_algorithm='noise', guess_algorithm='basic', n=5,
     `Bounds` must be a list of length `n`+1.  The first index must fall between
     bounds[0] and bounds[1].  The nth index must fall between bounds[n] and
     bounds[n+1].
-    '''
+    """
 
     # Get the NZC indices (e.g. the putative guess for the peak indices)
     if nzc_algorithm_kw is None:
@@ -122,17 +131,17 @@ def find_np(fs, waveform, nzc_algorithm='noise', guess_algorithm='basic', n=5,
     if nzc_algorithm is None:
         nzc_indices = nzc(waveform)
     else:
-        nzc_func = globals()['nzc_%s_filtered' % nzc_algorithm]
+        nzc_func = globals()["nzc_%s_filtered" % nzc_algorithm]
         nzc_indices = nzc_func(fs, waveform, **nzc_algorithm_kw)
 
     indices = []
-    guess_func = globals()['np_%s' % guess_algorithm]
+    guess_func = globals()["np_%s" % guess_algorithm]
     if guess_algorithm_kw is None:
         guess_algorithm_kw = {}
 
     if bounds is not None:
         for p in range(n):
-            mask = (nzc_indices > bounds[p]) & (nzc_indices < bounds[p+1])
+            mask = (nzc_indices > bounds[p]) & (nzc_indices < bounds[p + 1])
             bounded_indices = nzc_indices[mask]
             # If only one NZC falls within the bound, use that as the guess
             if len(bounded_indices) == 1:
@@ -146,34 +155,34 @@ def find_np(fs, waveform, nzc_algorithm='noise', guess_algorithm='basic', n=5,
                     # If the algorithm cannot make a guess as to the best index,
                     # it will raise an IndexError.  We capture that and place
                     # the index on the very end of the waveform.
-                    guess = guess_func(fs, waveform, bounded_indices, p,
-                                       **guess_algorithm_kw)
+                    guess = guess_func(
+                        fs, waveform, bounded_indices, p, **guess_algorithm_kw
+                    )
                     indices.append(guess)
                 except IndexError:
-                    indices.append(len(waveform)-1)
+                    indices.append(len(waveform) - 1)
     else:
         for p in range(n):
             try:
-                guess = guess_func(fs, waveform, nzc_indices, p,
-                                   **guess_algorithm_kw)
+                guess = guess_func(fs, waveform, nzc_indices, p, **guess_algorithm_kw)
                 indices.append(guess)
             except IndexError:
-                indices.append(len(waveform)-1)
+                indices.append(len(waveform) - 1)
     return indices
 
 
 def np_none(fs, waveform, indices, n):
-    '''
+    """
     Returns the first n indices
-    '''
+    """
     return indices[0][n]
 
 
 def np_basic(fs, waveform, indices, n, min_latency=1.0):
-    '''
+    """
     Returns the first n indices whose latency is greater than min_latency
-    '''
-    lb_index = min_latency/1e3*fs
+    """
+    lb_index = min_latency / 1e3 * fs
     return indices[indices >= lb_index][n]
 
 
@@ -183,28 +192,28 @@ def np_y_fun(fs, waveform, indices, n, fun=max):
 
 def np_seed(fs, waveform, indices, n, seeds, seed_lb=0.25, seed_ub=0.50):
     amplitudes = waveform[indices]
-    lb = seed_lb*1e-3*fs
-    ub = seed_ub*1e-3*fs
+    lb = seed_lb * 1e-3 * fs
+    ub = seed_ub * 1e-3 * fs
     return seed_rank(seeds[n], indices, amplitudes, 3, lb, ub)[0][0]
 
 
 def iterator_np(fs, waveform, start, nzc_filter=None):
-    '''
+    """
     Coroutine that steps through the possible guesses for the peak
-    '''
+    """
     if nzc_filter is None:
         nzc_indices = nzc(waveform)
     else:
-        nzc_indices = globals()['nzc_'+nzc_filter](fs, waveform)
+        nzc_indices = globals()["nzc_" + nzc_filter](fs, waveform)
 
-    dp = abs(nzc_indices-start)
+    dp = abs(nzc_indices - start)
     i = np.where(dp == dp.min())[0][0]
-    di = start-nzc_indices[i]  # Single index steps
+    di = start - nzc_indices[i]  # Single index steps
 
     while True:
-        step = (yield (nzc_indices[i] + di))
+        step = yield (nzc_indices[i] + di)
         if step is not None:
-            if step[0] == 'zc':
+            if step[0] == "zc":
                 prev = i
                 if di < 0 and step[1] > 0:
                     i -= 1
@@ -220,7 +229,7 @@ def iterator_np(fs, waveform, start, nzc_filter=None):
                 if (nzc_indices[i] + di) in nzc_indices:
                     i = np.where(nzc_indices == (nzc_indices[i] + di))[0][0]
                     di = 0
-                if nzc_indices[i]+di >= len(waveform) or nzc_indices[i]+di < 0:
+                if nzc_indices[i] + di >= len(waveform) or nzc_indices[i] + di < 0:
                     di = prev
 
 
@@ -228,22 +237,22 @@ def iterator_np(fs, waveform, start, nzc_filter=None):
 # Generic helper functions for above algorithms
 ################################################################################
 def nzc(x):
-    '''
+    """
     Returns indices of the negative zero crossings of the first derivative of x
-    '''
+    """
     dx = np.diff(x, 1)
     mask = (dx[1:] < 0) & (dx[:-1] >= 0)
-    return np.where(mask)[0]+1
+    return np.where(mask)[0] + 1
 
 
 def cluster_indices(x, distance):
-    '''
+    """
     Group together indices within `distance` of each other
-    '''
+    """
     indices = [0]
     clusters = []
     for i in range(1, len(x)):
-        if abs(x[i-1] - x[i]) <= distance:
+        if abs(x[i - 1] - x[i]) <= distance:
             indices.append(i)
         else:
             clusters.append(indices)
@@ -262,8 +271,8 @@ def cluster(indices, y, distance, fun=max):
 
 
 def seed_rank(s, indices, amplitudes, weighting=3, lb=25, ub=50):
-    di = np.asarray(indices, dtype='float')-s[0]
-    da = np.asarray(amplitudes)-s[1]
+    di = np.asarray(indices, dtype="float") - s[0]
+    da = np.asarray(amplitudes) - s[1]
 
     # Filter out peaks outside range
     range_mask = (di >= -lb) * (di <= ub)
@@ -279,6 +288,6 @@ def seed_rank(s, indices, amplitudes, weighting=3, lb=25, ub=50):
     di[neg_mask] = di[neg_mask] * 1.5
 
     # Convert to a ranking
-    rankings = zip(indices, abs(di)*1.5 + abs(da))
+    rankings = list(zip(indices, abs(di) * 1.5 + abs(da)))
     rankings.sort(key=op.itemgetter(1))
     return rankings
