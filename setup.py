@@ -18,7 +18,7 @@ setup(name='ABRPlotting',
       zip_safe=False,
       entry_points={
           'console_scripts': [
-               'abrp=src.plot_abrs:main',
+               'abrp=src.plotABRs:main',
           ]
       },
       classifiers = [
