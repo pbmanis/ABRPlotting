@@ -1,23 +1,25 @@
-from pathlib import Path
 import os.path
+from pathlib import Path
 from re import S
 from termios import NL1
 from tkinter import NONE
 
-import numpy as np
-import scipy.signal
 import matplotlib.cm
 import matplotlib.pyplot as mpl
+import numpy as np
+import scipy.signal
 
-from . import peakdetect  # from Brad Buran's project, but cloned and modified here
-from . ABR_Datasets import ABR_Datasets # just the dict describing the datasets
+from . import \
+    peakdetect  # from Brad Buran's project, but cloned and modified here
+from .ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
+
 
 class Analyzer(object):
     """
     Provide analysis functions for ABRs.
     """
 
-    def __init__(self, sample_frequency:float=1e5):
+    def __init__(self, sample_frequency: float = 1e5):
         self.ppioMarker = "s"
         self.rmsMarker = "o"
         self.psdMarker = "*"
@@ -28,12 +30,12 @@ class Analyzer(object):
 
         # self.sample_rate = 0.001 * (timebase[1] - timebase[0])
         # self.sample_freq = 1.0 / self.sample_rate
-        self.sample_rate = 1./self.sample_freq
+        self.sample_rate = 1.0 / self.sample_freq
         self.waves = waves
         self.timebase = timebase
 
-        response_range = [1.0, 5]  # window, in msec...
-        baseline = [20, 25] # [0.0, 0.8]
+        response_range = [2.2, 8]  # window, in msec...
+        baseline = [20, 25]  # [0.0, 0.8]
 
         self.get_triphasic(min_lat=response_range[0], dev=2.5)
         self.ppio = self.peaktopeak(response_range)
@@ -48,7 +50,7 @@ class Analyzer(object):
             pp[i] = np.max(self.waves[i][tx]) - np.min(self.waves[i][tx])
         return pp
 
-    def get_triphasic(self, min_lat:float=1.0, dev:float=2.5):
+    def get_triphasic(self, min_lat: float = 2.2, dev: float = 2.5):
         """
         Use Buran's peakdetect routine to find the peaks and returan a list
         of peaks. Works 3 times - first run finds all the positive peaks, and
@@ -100,12 +102,22 @@ class Analyzer(object):
         (x,) = np.where((tr[0] <= self.timebase) & (self.timebase < tr[1]))
         return x
 
-    def specpower(self, waves, spls, fr=[500.0, 1500.0], win=[0, -1], ax = None, ax2=None, lt='-', cindex=0):
+    def specpower(
+        self,
+        waves,
+        spls,
+        fr=[500.0, 1500.0],
+        win=[0, -1],
+        ax=None,
+        ax2=None,
+        lt="-",
+        cindex=0,
+    ):
         fs = 1.0 / self.sample_rate
         psd = [None] * waves.shape[0]
         psdwindow = np.zeros(waves.shape[0])
         print("win: ", win)
-        cmap = matplotlib.cm.get_cmap('tab20')
+        cmap = matplotlib.cm.get_cmap("tab20")
         for i in range(waves.shape[0]):
             freqs, psd[i] = scipy.signal.welch(
                 1e6 * waves[i][win[0] : win[1]],
@@ -117,14 +129,22 @@ class Analyzer(object):
             (frx,) = np.where((freqs >= fr[0]) & (freqs <= fr[1]))
             psdwindow[i] = np.nanmax(psd[i][frx[0] : frx[-1]])
             if ax is not None:
-                ax.semilogx(freqs, psd[i], linestyle = lt, label=f"{spls[i]:.1f}", color=cmap(i/20.0))
+                ax.semilogx(
+                    freqs,
+                    psd[i],
+                    linestyle=lt,
+                    label=f"{spls[i]:.1f}",
+                    color=cmap(i / 20.0),
+                )
                 # ax.set_ylim([0.1e-4, 0.1])
-                ax.set_xlim([10., 2500.])
-                ax.set_xlabel('F (Hz)')
-                ax.set_ylabel(r'PSD ($\mu V^2/Hz$)')
+                ax.set_xlim([10.0, 2500.0])
+                ax.set_xlabel("F (Hz)")
+                ax.set_ylabel(r"PSD ($\mu V^2/Hz$)")
             if ax2 is not None:
-                tb = fs*np.arange(0, len(waves[i][win[0]: win[1]]))
-                ax2.plot(tb, waves[i][win[0]: win[1]], linestyle=lt, color=cmap(i/20.))
+                tb = fs * np.arange(0, len(waves[i][win[0] : win[1]]))
+                ax2.plot(
+                    tb, waves[i][win[0] : win[1]], linestyle=lt, color=cmap(i / 20.0)
+                )
         self.fr = freqs
         self.psd = psd
         self.psdwindow = psdwindow
@@ -137,7 +157,7 @@ class Analyzer(object):
         Use last 10 msec of 25 msec window for SD estimates
         Computes SNR (max(abs(signal))/reference SD) for a group of traces
         The reference SD is the MEDIAN SD across the intensity run.
-        
+
 
         """
         refwin = self.gettimeindices(reftimes)
@@ -148,16 +168,16 @@ class Analyzer(object):
         true_thr = np.max(spls)
         # if len(thr) > 0:
         for i, s in enumerate(spls):
-            j = len(spls)-i-1
-            if self.max_wave[j] >= self.median_sd*SD:
+            j = len(spls) - i - 1
+            if self.max_wave[j] >= self.median_sd * SD:
                 true_thr = spls[j]
             else:
                 break
         # else:
         #     t = len(spls)-1
         print("thr: ", true_thr)
- 
-        return true_thr # spls[thr[0]]
+
+        return true_thr  # spls[thr[0]]
         # (thr,) = np.where(
         #     self.max_wave >= self.median_sd * SD
         # )  # find criteria threshold
@@ -169,7 +189,15 @@ class Analyzer(object):
         # else:
         #     return np.nan
 
-    def threshold_spec(self, waves, spls, tr=[1.0, 8.0], reftimes=[20, 25], SD=4.0):
+    def threshold_spec(
+        self,
+        waves,
+        spls,
+        tr=[1.0, 8.0],
+        reftimes=[20, 25],
+        spec_bandpass=[800.0, 1200.0],
+        SD=4.0,
+    ):
         """
         Auto threshold detection:
         BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104
@@ -184,13 +212,29 @@ class Analyzer(object):
         # print('max time: ', np.max(self.timebase))
         refwin = self.gettimeindices(reftimes)
         if showspec:
-            fig, ax = mpl.subplots(1,2, figsize=(10, 5))
+            fig, ax = mpl.subplots(1, 2, figsize=(10, 5))
         else:
             ax = [None, None]
-        sds = self.specpower(waves, spls, fr=[1900., 2200.0], win=[refwin[0], refwin[-1]], ax=ax[0], ax2=ax[1], lt = '--')
+        sds = self.specpower(
+            waves,
+            spls,
+            fr=spec_bandpass,
+            win=[refwin[0], refwin[-1]],
+            ax=ax[0],
+            ax2=ax[1],
+            lt="--",
+        )
         self.median_sd = np.nanmedian(sds)
         tx = self.gettimeindices(tr)
-        self.max_wave = self.specpower(waves, spls, fr=[1900., 2200.0], win=[tx[0], tx[-1]], ax=ax[0], ax2=ax[1], lt = '-')
+        self.max_wave = self.specpower(
+            waves,
+            spls,
+            fr=spec_bandpass,
+            win=[tx[0], tx[-1]],
+            ax=ax[0],
+            ax2=ax[1],
+            lt="-",
+        )
         # (thr,) = np.where(
         #     self.max_wave >= self.median_sd * SD
         # )  # find all spls that meet the criteria threshold
@@ -201,8 +245,8 @@ class Analyzer(object):
         true_thr = np.max(spls)
         # if len(thr) > 0:
         for i, s in enumerate(spls):
-            j = len(spls)-i-1
-            if self.max_wave[j] >= self.median_sd*SD:
+            j = len(spls) - i - 1
+            if self.max_wave[j] >= self.median_sd * SD:
                 true_thr = spls[j]
             else:
                 break
@@ -212,6 +256,6 @@ class Analyzer(object):
 
         if showspec:
             mpl.show()
-        return true_thr # spls[thr[0]]
+        return true_thr  # spls[thr[0]]
         # else:
         #     return np.nan

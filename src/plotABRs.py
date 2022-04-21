@@ -53,10 +53,17 @@ class ABR:
 
         # Set some default parameters for the data and analyses
 
-        self.sample_freq = 100000.0  # Hz
+        if 'sample_freq' in list(info.keys()):
+            self.sample_freq = 50000.0  # Hz
+        else:
+            self.sample_freq = 100000.0
         self.sample_rate = (
             1.0 / self.sample_freq
         )  # standard interpolated sample rate for matlab abr program: 10 microsecnds
+        if "spec_bandpass" in list(info.keys()):
+            self.spec_bandpass = info["spec_bandpass"]
+        else:
+            self.spec_bandpass = [800., 1200.]
         self.hpf = 500.0
         self.lpf = 2500.0  # filter frequencies, Hz
         self.mode = mode
@@ -80,12 +87,13 @@ class ABR:
         self.characterizeDataset()
 
         # build color map where each SPL is a color (cycles over 12 levels)
-        bounds = np.linspace(0, 120, 25)  # 0 to 120 db inclusive, 5 db steps
+        self.max_colors = 25
+        bounds = np.linspace(0, 120, self.max_colors)  # 0 to 120 db inclusive, 5 db steps
         color_labels = np.unique(bounds)
-        self.color_map = self.makeColorMap(25, color_labels)
-        color_labels2 = list(range(25))
+        self.color_map = self.makeColorMap(self.max_colors, color_labels)
+        color_labels2 = list(range(self.max_colors))
         self.summaryClick_color_map = self.makeColorMap(
-            25, list(range(25))
+            self.max_colors, list(range(self.max_colors))
         )  # make a default map, but overwrite for true number of datasets
         self.psdIOPlot = False
 
@@ -242,7 +250,7 @@ class ABR:
 
         Parameters
         ----------
-        select : which data to select (see main section at end of code)
+        select : which data to select
 
         """
         select, freqs = self.adjustSelection(select)
@@ -261,7 +269,7 @@ class ABR:
             # else:
             #     smarker = "kx-"
             smarker = "kx-"
-            waves = self.get_combineddata(s, self.clickmaps[s])
+            waves = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
             if waves is None:
                 print(f"Malformed data set for run {s:s}. Continuing")
                 continue
@@ -373,61 +381,73 @@ class ABR:
             A.analyze(t, waves)
             p1, n1, p2 = A.p1n1p2
             # print("PNP: ", p1, n1, p2)
+            thr_spl = A.threshold_spec(waves, spls, tr=[2.0, 6.0], reftimes=[20, 25], spec_bandpass=self.spec_bandpass, SD=4.0)
+            thrs[s] = thr_spl
+
             halfspl = np.max(spls) / 2.0
             
             # generate a line demacating the P1 (first wave)
             latmap = []
             spllat = []
             for j in range(len(spls)):
-                if spls[j] > halfspl:
+                if spls[j] > thrs[s]:
                     latmap.append(t[p1[j][0]])  # get latency for first value
                     spllat.append(spls[j])
-            latp = np.polyfit(spllat, latmap, 1)
-            fitline = np.polyval(latp, spls)
+            if len(latmap) > 2:
+                latp = np.polyfit(spllat, latmap, 1)
+                fitline = np.polyval(latp, spls)
 
-            thr_spl = A.threshold_spec(waves, spls, tr=[1.0, 4.0], reftimes=[20, 25], SD=4.0)
-            thrs[s] = thr_spl
             linewidth = 1.0
             IO = np.zeros(len(spls))
+            sf = 8
+            sf_cvt = 1e6
+            if index == 0:
+                x = [0.5, 0.5]
+                y = np.array([0, 1e-6])*sf*sf_cvt + 100.0  # put at 100 dB... 
+                plottarget.plot(x, y, linewidth=1.5)  # put 1 uV cal bar at highest sound level
+                plottarget.text(x[0]+0.1, np.mean(y), s=r"1 $\mu V$",  ha="left", va="center", fontsize=7)
             for j in range(len(spls)):
                 if spls[j] == thr_spl:  # highlight the threshold spl
                     plottarget.plot(
                         t,
-                        0 * waves[j] * 1e6 + spls[j],
+                        0 * waves[j] * sf_cvt + spls[j],
                         color=[0.5, 0.5, 0.5, 0.4],
                         linewidth=5,
                     )
                 try:
                     c = self.color_map[spls[j]]
                     plottarget.plot(
-                        t, 2 * waves[j] * 1e6 + spls[j], color=c, linewidth=linewidth
+                        t, sf * waves[j] * sf_cvt + spls[j], color=c, linewidth=linewidth
                     )
                 except:
                     plottarget.plot(
-                        t, 2 * waves[j] * 1e6 + spls[j], color="k", linewidth=linewidth
+                        t, sf * waves[j] * sf_cvt + spls[j], color="k", linewidth=linewidth
                     )
+                
                 for p in p1[j]:
                     plottarget.plot(
-                        t[p], 2 * waves[j][p] * 1e6 + spls[j], "ro", markersize=2
+                        t[p], sf * waves[j][p] * sf_cvt + spls[j], "ro", markersize=2
                     )
                 for p in n1[j]:
                     plottarget.plot(
-                        t[p], 2 * waves[j][p] * 1e6 + spls[j], "bo", markersize=2
+                        t[p], sf * waves[j][p] * sf_cvt + spls[j], "bo", markersize=2
                     )
-                plottarget.plot(fitline, spls, "g-", linewidth=0.7)
-                if spls[j] >= thr_spl:
-                    IO[j] = 1.0e6 * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
+                if len(latmap) > 2:
+                    plottarget.plot(fitline, spls, "g-", linewidth=0.7)
+                if spls[j] >= thr_spl or len(latmap) <= 2:
+                    IO[j] = sf_cvt * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
                 else:
                     ti = int(fitline[j] / (self.sample_rate * 1000.0))
-                    IO[j] = 1.0e6 * waves[j][ti]
+                    IO[j] = sf_cvt * waves[j][ti]
+                    
 
             if superIOPlot is not None:  # superimposed IO plots
                 datatitle_short = f"{str(self.datapath.parts[-1]):s}/{s:s}"
                 superIOPlot.plot(
                     spls,
-                    1e6 * A.ppio,
+                    sf_cvt * A.ppio,
                     self.clickdata[s]["marker"],
-                    color=self.summaryClick_color_map[icol],
+                    color=self.summaryClick_color_map[icol % self.max_colors],
                     label=datatitle_short,
                 )
 
@@ -444,23 +464,23 @@ class ABR:
                 IOplot.set_title(datatitle,  y=0.95,fontdict={"fontsize": 7, "ha": "center", 'va': "top"})  # directory plus file
                 IOplot.plot(
                     spls,
-                    1e6 * A.ppio,
+                    sf_cvt * A.ppio,
                     marker=A.ppioMarker,
                     markersize=3,
-                    color=self.summaryClick_color_map[icol],
+                    color=self.summaryClick_color_map[icol % self.max_colors],
                     label="P-P",
                 )
                 IOplot.plot(
                     spls,
-                    1e6 * A.rms_response,
+                    sf_cvt * A.rms_response,
                     marker=A.rmsMarker,
                     markersize=3,
-                    color=self.summaryClick_color_map[icol],
+                    color=self.summaryClick_color_map[icol % self.max_colors],
                     label="RMS signal",
                 )
                 IOplot.plot(
                     spls,
-                    1e6 * A.rms_baseline,
+                    sf_cvt * A.rms_baseline,
                     marker=A.baselineMarker,
                     markersize=3,
                     color="k",
@@ -631,7 +651,7 @@ class ABR:
 
 
 
-    def get_combineddata(self, datasetname, dataset, freq=None):
+    def get_combineddata(self, datasetname, dataset, freq=None, lineterm="\r"):
         """
         Read the data sets and combine the p (condensation) and n
         (rarefaction) data sets for alternating polarity stimuli.
@@ -647,6 +667,9 @@ class ABR:
         freq : float (default: None)
             for tone maps, the specific frequency intensity series to return
 
+        lineterm: str (default: '\r')
+            line terminator for this dataset
+
         Returns
         -------
         waves : numpy array
@@ -658,15 +681,15 @@ class ABR:
         if dataset["stimtype"] == "click":
             fnamepos = datasetname + "-p.txt"
             fnameneg = datasetname + "-n.txt"
-            waves = self.read_dataset(fnamepos, fnameneg)
+            waves = self.read_dataset(fnamepos, fnameneg, lineterm)
             return waves
         if dataset["stimtype"] == "tonepip":
             fnamepos = datasetname + "-p-%.3f.txt" % freq
             fnameneg = datasetname + "-n-%.3f.txt" % freq
-            waves = self.read_dataset(fnamepos, fnameneg)
+            waves = self.read_dataset(fnamepos, fnameneg, lineterm)
             return waves
 
-    def read_dataset(self, fnamepos, fnameneg):
+    def read_dataset(self, fnamepos, fnameneg, lineterm="\r"):
         """
         Read a dataset, combining the positive and negative recordings,
         which are stored in separate files on disk. The waveforms are averaged
@@ -680,6 +703,8 @@ class ABR:
              name of the positive (condensation) file
         fnameneg : str
             name of the negative (rarefaction) file
+        lineterm: str
+            line terminator used for this file set
 
         Returns
         -------
@@ -688,21 +713,27 @@ class ABR:
             and m is the length of each waveform
 
         """
-
+        # handle missing files.
+        if not Path(self.datapath, fnamepos).is_file():
+            return None
+        if not Path(self.datapath, fnameneg).is_file():
+            return None
+        
         posf = pd.io.parsers.read_csv(
             Path(self.datapath, fnamepos),
             delim_whitespace=True,
-            lineterminator="\r",
+            lineterminator=lineterm,
             skip_blank_lines=True,
             header=0,
         )
         negf = pd.io.parsers.read_csv(
             Path(self.datapath, fnameneg),
             delim_whitespace=True,
-            lineterminator="\r",
+            lineterminator=lineterm,
             skip_blank_lines=True,
             header=0,
         )
+
         negseries = []
         posseries = []
         for col in negf.columns:
