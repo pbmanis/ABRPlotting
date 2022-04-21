@@ -4,8 +4,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import mat4py
 import pylibrary.plotting.plothelpers as PH
 import scipy.signal
+import scipy.io
 import seaborn as sns  # makes plot background light grey with grid, no splines. Remove for publication plots
 from matplotlib import pyplot as mpl
 from matplotlib.backends.backend_pdf import PdfPages
@@ -13,6 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from . import getcomputer  # stub to return the computer and base directory
 from . import abr_analyzer
 from .ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
+from . import MatFileMethods
 
 basedir, computer_name = getcomputer.getcomputer()
 
@@ -108,7 +111,7 @@ class ABR:
         Nothing
         """
 
-        # files = [f for f in self.datapath.glob("*") if f.is_file()]
+        self.get_matlab()
         self.spls = self.getSPLs()
         self.freqs = self.getFreqs()
         # A click run will consist of an SPL, n and p file, but NO additional files.
@@ -214,6 +217,22 @@ class ABR:
             ]  # handle old data with blank line at end
         # print("\nrundict: ", rundict)
         return rundict
+
+    def get_matlab(self):
+        matfiles = list(self.datapath.glob("*.mat"))
+        print(list(matfiles))
+        # import matlab.engine
+        # eng = matlab.engine.start_matlab()
+        # for mf in matfiles:
+        #     # mdata = scipy.io.loadmat(mf)
+        #     # print(mdata['bigdata'].abr4_data_struct)
+        #     print(mf)
+        #     data = eng.load(str(mf), nargout=1)
+        #     print(data['bigdata']) # ['abr4_calibration_struct'])
+
+
+        # exit()
+
 
     def getClickData(self, select):
         """
@@ -344,25 +363,29 @@ class ABR:
         A = abr_analyzer.Analyzer(sample_frequency=self.sample_freq)
         thrs = {}
         icol = colorindex
-        for s in list(self.clickdata.keys()):
-            datatitle = f"{str(self.datapath.parts[-1]):s}/{s:s}"
+        for index, s in enumerate(list(self.clickdata.keys())):
+            datatitle = f"{str(self.datapath.parts[-1]):s}\n{s:s}"
             # datatitle = datatitle.replace('_', '\_')  # if TeX is enabled, will need to escape the underscores
             waves = self.clickdata[s]["waves"]
             t = self.clickdata[s]["timebase"]
             spls = self.clickdata[s]["spls"]
 
             A.analyze(t, waves)
-            r, n = A.p1n1
+            p1, n1, p2 = A.p1n1p2
+            # print("PNP: ", p1, n1, p2)
             halfspl = np.max(spls) / 2.0
+            
+            # generate a line demacating the P1 (first wave)
             latmap = []
             spllat = []
             for j in range(len(spls)):
                 if spls[j] > halfspl:
-                    latmap.append(t[r[j][0]])  # get latency for first value
+                    latmap.append(t[p1[j][0]])  # get latency for first value
                     spllat.append(spls[j])
             latp = np.polyfit(spllat, latmap, 1)
             fitline = np.polyval(latp, spls)
-            thr_spl = A.threshold_spec(waves, spls, SD=3.5)
+
+            thr_spl = A.threshold_spec(waves, spls, tr=[1.0, 4.0], reftimes=[20, 25], SD=4.0)
             thrs[s] = thr_spl
             linewidth = 1.0
             IO = np.zeros(len(spls))
@@ -383,17 +406,17 @@ class ABR:
                     plottarget.plot(
                         t, 2 * waves[j] * 1e6 + spls[j], color="k", linewidth=linewidth
                     )
-                for p in r[j]:
+                for p in p1[j]:
                     plottarget.plot(
                         t[p], 2 * waves[j][p] * 1e6 + spls[j], "ro", markersize=2
                     )
-                for p in n[j]:
+                for p in n1[j]:
                     plottarget.plot(
                         t[p], 2 * waves[j][p] * 1e6 + spls[j], "bo", markersize=2
                     )
                 plottarget.plot(fitline, spls, "g-", linewidth=0.7)
                 if spls[j] >= thr_spl:
-                    IO[j] = 1.0e6 * (waves[j][r[j][0]] - waves[j][n[j][0]])
+                    IO[j] = 1.0e6 * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
                 else:
                     ti = int(fitline[j] / (self.sample_rate * 1000.0))
                     IO[j] = 1.0e6 * waves[j][ti]
@@ -418,7 +441,7 @@ class ABR:
                 print("*" * 20)
 
             if IOplot is not None:  # generic io plot for cell
-                IOplot.set_title(datatitle, {"fontsize": 7})  # directory plus file
+                IOplot.set_title(datatitle,  y=0.95,fontdict={"fontsize": 7, "ha": "center", 'va': "top"})  # directory plus file
                 IOplot.plot(
                     spls,
                     1e6 * A.ppio,
@@ -457,10 +480,11 @@ class ABR:
                         markersize=3,
                     )
                     ax2.tick_params("y", colors="r")
-                handles, labels = IOplot.get_legend_handles_labels()
-                legend = IOplot.legend(loc="upper left")
-                for label in legend.get_texts():
-                    label.set_fontsize(6)
+                if index == 0 and icol == 0:
+                    handles, labels = IOplot.get_legend_handles_labels()
+                    legend = IOplot.legend(loc="upper left")
+                    for label in legend.get_texts():
+                        label.set_fontsize(6)
 
             if PSDplot is not None:  # power spectral density
                 for j in range(len(spls)):
@@ -471,12 +495,12 @@ class ABR:
                 PSDplot.set_xlim(100.0, 2000.0)
         plottarget.set_xlim(0, 8.0)
         plottarget.set_ylim(10.0, 115.0)
-        plottarget.title.set_text(datatitle)
-        plottarget.title.set_size(7)
+        plottarget.set_title(datatitle, y=1.0,fontdict={"fontsize": 7, "ha": "center", 'va': "top"})
+
         if superIOPlot is not None:
             legend = superIOPlot.legend(loc="upper left")
             for label in legend.get_texts():
-                label.set_fontsize(7)
+                label.set_fontsize(5)
 
         print("")
         for s in list(thrs.keys()):
@@ -802,16 +826,17 @@ def do_clicks(dsname, mode, top_directory, dirs):
         clicksel = ABR_Datasets[dsname]["clickselect"]
     else:
         clicksel = [None] * len(dirs)
-    rowlen = 8.0
-    m = int(np.ceil(len(clicksel) / rowlen))
-    if m == 1:
-        n = len(clicksel)
-    else:
-        n = int(rowlen)
+    m, n = PH.getLayoutDimensions(len(clicksel))
+    # rowlen = 8.0
+    # m = int(np.ceil(len(clicksel) / rowlen))
+    # if m == 1:
+    #     n = len(clicksel)
+    # else:
+    #     n = int(rowlen)
     if m > 1:
-        h = 4 * m
+        h = 2.5 * m
     else:
-        h = 5
+        h = 3
     f, axarr = mpl.subplots(m, n, figsize=(12, h), num="Click Traces")
     for ax in axarr:
         PH.nice_plot(ax)
@@ -833,7 +858,6 @@ def do_clicks(dsname, mode, top_directory, dirs):
         P = ABR(Path(top_directory, dirs[k]), mode, info=ABR_Datasets[dsname])
         if icol == 0:
             P.summaryClick_color_map = P.makeColorMap(nsel, list(range(nsel)))
-        print("icol: ", icol)
         P.getClickData(select=clicksel[k])
         P.plotClicks(
             select=clicksel[k],
