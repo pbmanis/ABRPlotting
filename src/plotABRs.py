@@ -1,11 +1,9 @@
 """PlotABRs
 
-Plot ABR data from our matlab program. 
-This relies on ABR_Datasets.py to specify experiments.
-The directory for each subject is also expected to be
-named in a way that identifies the subject and experimental
-group(s). This allows us to make plots that correctly assign
-each subject with markers and labels. 
+Plot ABR data from our matlab program. This relies on ABR_Datasets.py to specify
+experiments. The directory for each subject is also expected to be named in a
+way that identifies the subject and experimental group(s). This allows us to
+make plots that correctly assign each subject with markers and labels. 
 
 """
 
@@ -47,9 +45,9 @@ class ABR:
         Parameters
         ----------
         datapath : str
-            Path to the datasets. The data sets are expected to be collected under this
-            path into individual directories, each with the results of the ABR runs for
-            one subject.
+            Path to the datasets. The data sets are expected to be collected
+            under this path into individual directories, each with the results
+            of the ABR runs for one subject.
         mode : string ('clicks' or 'tones')
             Specify type of data in the data set
         info : dict
@@ -59,8 +57,8 @@ class ABR:
                 minlat : float (default 0.75)
                     minimum latency for event detection
                 term : float (default '\r')
-                    line terminator (may change if the data has been read by an editor or is
-                    on a windows vs. mac vs linux system)
+                    line terminator (may change if the data has been read by an
+                    editor or is on a windows vs. mac vs linux system)
         """
         # Set some default parameters for the data and analyses
 
@@ -113,16 +111,18 @@ class ABR:
 
     def characterizeDataset(self):
         """
-        Look at the directory in datapath, and determine what datasets are present.
-        A dataset consists of at least 3 files:
-        yyyymmdd-HHMM-SPL.txt : the SPL levels in a given run, with year, month day hour and minute
-        yyyymmdd-HHMM-{n,p}-[freq].txt : hold waveform data for a series of SPL levels
+        Look at the directory in datapath, and determine what datasets are
+        present. A dataset consists of at least 3 files: yyyymmdd-HHMM-SPL.txt :
+        the SPL levels in a given run, with year, month day hour and minute
+        yyyymmdd-HHMM-{n,p}-[freq].txt : hold waveform data for a series of SPL
+        levels
             For clicks, just click polarity - holds waveforms from the run
-            typically there will be both an n and a p file because we use alternating polarities.
-            For tones, there is also a number indicating the tone pip frequency used.
+            typically there will be both an n and a p file because we use
+            alternating polarities. For tones, there is also a number indicating
+            the tone pip frequency used.
 
-        The runs are stored in separate dictionaries for the click and tone map runs, including
-        their SPL levels (and for tone maps, frequencies).
+        The runs are stored in separate dictionaries for the click and tone map
+        runs, including their SPL levels (and for tone maps, frequencies).
 
         Parameters
         ----------
@@ -238,9 +238,8 @@ class ABR:
     def getFreqs(self):
         """
         Return all the tonepip files in the directory. There is one tonepip file
-        per frequency for its intensity run.
-        We key off of the kHz.txt file to get the timestamp
-        and get the frequencies from that file
+        per frequency for its intensity run. We key off of the kHz.txt file to
+        get the timestamp and get the frequencies from that file
 
         """
         # return all the tone response files in the directory.
@@ -313,9 +312,9 @@ class ABR:
 
     def getClickData(self, select: str = "", directory: str = ""):
         """
-        Gets the click data for the current selection
-        The resulting data is held in a dictionary structured as
-        {mapidentity: dict of {waves, time, spls and optional marker}
+        Gets the click data for the current selection The resulting data is held
+        in a dictionary structured as {mapidentity: dict of {waves, time, spls
+        and optional marker}
 
         Parameters
         ----------
@@ -352,10 +351,10 @@ class ABR:
 
     def getToneData(self, select, directory: str = ""):
         """
-        Gets the tone map data for the current selection
-        The resulting data is held in a dictionary structured as
-        {mapidentity: dict of frequencies}
-        Where each dictoffrequencies holds a dict of {waves, time, spls and optional marker}
+        Gets the tone map data for the current selection The resulting data is
+        held in a dictionary structured as {mapidentity: dict of frequencies}
+        Where each dictoffrequencies holds a dict of {waves, time, spls and
+        optional marker}
 
         """
         self.tonemapdata = {}
@@ -412,21 +411,25 @@ class ABR:
         Parameters
         ----------
         select : list of str (default : None)
-            A list of the times for the datasets to plot for each subject.
-            If None, then all detected click ABR runs for that subject are superimposed.
-            The list looks like [['0115'], None, None]  - for each directory in order.
+            A list of the times for the datasets to plot for each subject. If
+            None, then all detected click ABR runs for that subject are
+            superimposed. The list looks like [['0115'], None, None]  - for each
+            directory in order.
 
         plottarget : matplotlib axis object
             The axis to plot the data into.
 
         IOPlot : Matplotlib Axes object
-            Input output plot target. If not None, then use the specified Mabplotlib Axes for the IO plot
+            Input output plot target. If not None, then use the specified
+            Mabplotlib Axes for the IO plot
 
         PSDPlot : Matplotlib Axes object
-            Power spectral density plot target. If not None, then use the specified Mabplotlib Axes for the plot
+            Power spectral density plot target. If not None, then use the
+            specified Mabplotlib Axes for the plot
 
         superIOPlot : Matplotlib Axes object
-            Input output plot target. If not None, then use the specified Mabplotlib Axes for the IO plot
+            Input output plot target. If not None, then use the specified
+            Mabplotlib Axes for the IO plot
 
         """
         # get data for clicks and plot all on one plot
@@ -523,7 +526,7 @@ class ABR:
                 else:
                     ti = int(fitline[j] / (self.sample_rate * 1000.0))
                     IO[j] = sf_cvt * waves[j][ti]
-            
+
             plottarget.set_ylabel("dBSPL")
             plottarget.set_xlabel("T (ms)")
 
@@ -631,19 +634,20 @@ class ABR:
 
     def plotTones(self, select=None, pdf=None):
         """
-        Plot the tone ABR intensity series, one column per frequency, for one subject
+        Plot the tone ABR intensity series, one column per frequency, for one
+        subject
 
         Parameters
         ----------
         select : list of str (default : None)
-            A list of the times for the datasets to plot for each subject.
-            If None, then all detected tone ABR runs for that subject/frequency
-            comtination are superimposed.
-            The list looks like [['0115'], None, None]  - for each directory in order.
+            A list of the times for the datasets to plot for each subject. If
+            None, then all detected tone ABR runs for that subject/frequency
+            comtination are superimposed. The list looks like [['0115'], None,
+            None]  - for each directory in order.
 
         pdf : pdfPages object
-            The pdfPages object that the plot will be appended to. Results in a multipage
-            pdf, one page per subject.
+            The pdfPages object that the plot will be appended to. Results in a
+            multipage pdf, one page per subject.
 
         """
         self.thrs = {}  # holds thresholds for this dataset
@@ -693,19 +697,19 @@ class ABR:
 
     def plotToneThresholds(self, allthrs, num):
         """
-        Make a plot of the tone thresholds for all of the datasets
-        Data are plotted against a log frequency scale (2-64kHz)
-        Data is plotted into the current figure.
+        Make a plot of the tone thresholds for all of the datasets Data are
+        plotted against a log frequency scale (2-64kHz) Data is plotted into the
+        current figure.
 
         Parameters
         ----------
         allthrs : dict
-        A dictionary holding all the threshold information. The following
-        structure is required:
-            Keys: filenames for each dataset
-            Values a dict of thresholds. The keys are the names of the tone maps
-            (because more than one tone map may be combined)
-            The values are tuples of (frequency, threshold)
+            A dictionary holding all the threshold information. The following
+            structure is required:
+                Keys: filenames for each dataset Values a dict of thresholds.
+                The keys are the names of the tone maps (because more than one
+                tone map may be combined) The values are tuples of (frequency,
+                threshold)
 
         Returns
         -------
@@ -757,9 +761,9 @@ class ABR:
         datasetname : str
             yyyymmdddd-time format for start of dataset name
         dataset : dict
-            dictionary for the dataset that identifies the stimulus
-            type, the SPLs in the dataset, and the frequency if the dataset
-            is a tone pip run
+            dictionary for the dataset that identifies the stimulus type, the
+            SPLs in the dataset, and the frequency if the dataset is a tone pip
+            run
         freq : float (default: None)
             for tone maps, the specific frequency intensity series to return
 
@@ -769,8 +773,8 @@ class ABR:
         Returns
         -------
         waves : numpy array
-            Waveforms, as a nxm array, where n is the number of intensities,
-            and m is the length of each waveform
+            Waveforms, as a nxm array, where n is the number of intensities, and
+            m is the length of each waveform
 
         """
         if dataset["stimtype"] == "click":

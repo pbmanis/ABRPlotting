@@ -73,13 +73,14 @@ class Analyzer(object):
         return pp
 
     def get_triphasic(self, min_lat: float = 2.2, dev: float = 2.5):
-        """Use Brad Buran's peakdetect routine to find the peaks and returan a list
-        of peaks. Works 3 times - first run finds all the positive peaks, and
-        the second run finds the negative peaks that follow the positive peaks.
-        The last run finds the next positive peak after the negative peak.
-        This yields P1-N1-P2, which is the returned value.
-        Note that the peaks from peakdetect may not be "aligned" in the sense that it is possible
-        to find two positive peaks in succession without a negative peak.
+        """Use Brad Buran's peakdetect routine to find the peaks and return
+        a list of peaks. Works 3 times - first run finds all the positive peaks,
+        and the second run finds the negative peaks that follow the positive
+        peaks. The last run finds the next positive peak after the negative
+        peak. This yields P1-N1-P2, which is the returned value. Note that the
+        peaks from peakdetect may not be "aligned" in the sense that it is
+        possible to find two positive peaks in succession without a negative
+        peak.
 
         Parameters
         ----------
@@ -122,7 +123,7 @@ class Analyzer(object):
         self.p1n1p2 = (p1, n1, p2)
 
     def measure_rms(self, tr:Union[List, np.ndarray]) -> np.ndarray:
-        """Measure the rms values in a set of traces
+        """Measure the rms values in a set of traces.
         Works on the data in self.waves, and computes the rms values
         for each trace.
 
@@ -199,12 +200,11 @@ class Analyzer(object):
 
     def thresholds(self, waves: np.ndarray, spls:Union[List, np.ndarray], tr=[1.0, 8.0], reftimes=[20, 25], SD=3.0):
         """Measure the threshold for a response in each wave
-        Auto threshold detection:
-        BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104
-        Use last 10 msec of 25 msec window for SD estimates
-        Computes SNR (max(abs(signal))/reference SD) for a group of traces
-        The reference SD is the MEDIAN SD across the entire intensity run,
-        to minimize the effects of noise in just one trace.
+        Auto threshold detection: BMC Neuroscience200910:104  DOI:
+        10.1186/1471-2202-10-104 Use last 10 msec of 25 msec window for SD
+        estimates Computes SNR (max(abs(signal))/reference SD) for a group of
+        traces The reference SD is the MEDIAN SD across the entire intensity
+        run, to minimize the effects of noise in just one trace.
 
         Parameters
         ----------
@@ -250,10 +250,10 @@ class Analyzer(object):
         SD=4.0,
     ):
         """Auto threshold detection:
-        BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104
-        Use last part of the response window for SD estimates
-        Computes SNR (max(abs(signal))/reference SD) for a group of traces
-        The reference SD is the MEDIAN SD across the intensity run.
+        BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104 Use last part
+        of the response window for SD estimates Computes SNR
+        (max(abs(signal))/reference SD) for a group of traces The reference SD
+        is the MEDIAN SD across the intensity run.
 
         MODIFIED version: criteria based on power spectrum in a narrow power
         window. 
@@ -271,8 +271,8 @@ class Analyzer(object):
         spec_bandpass : list, optional
             bandpass window to measure the spectrum: by default [800.0, 1200.0]
         SD : float, optional
-            relative size of the response in the response window, compared
-            to the "baseline" window, to consider the presence of a valid response,
+            relative size of the response in the response window, compared to
+            the "baseline" window, to consider the presence of a valid response,
             by default 4.0
 
         Returns
