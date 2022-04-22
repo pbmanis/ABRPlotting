@@ -73,6 +73,11 @@ class ABR:
             self.spec_bandpass = info["spec_bandpass"]
         else:
             self.spec_bandpass = [800.0, 1200.0]
+        if "show_dots" in list(info.keys()): # turn off dot plotting.
+            self.show_dots = info["show_dots"]
+        else:
+            self.show_dots = True
+
         self.hpf = 500.0
         self.lpf = 2500.0  # filter frequencies, Hz
         self.mode = mode
@@ -511,15 +516,16 @@ class ABR:
                         linewidth=linewidth,
                     )
 
-                for p in p1[j]:
-                    plottarget.plot(
-                        t[p], sf * waves[j][p] * sf_cvt + spls[j], "ro", markersize=2
-                    )
-                for p in n1[j]:
-                    plottarget.plot(
-                        t[p], sf * waves[j][p] * sf_cvt + spls[j], "bo", markersize=2
-                    )
-                if len(latmap) > 2:
+                if self.show_dots:
+                    for p in p1[j]:
+                        plottarget.plot(
+                            t[p], sf * waves[j][p] * sf_cvt + spls[j], "ro", markersize=2
+                        )
+                    for p in n1[j]:
+                        plottarget.plot(
+                            t[p], sf * waves[j][p] * sf_cvt + spls[j], "bo", markersize=2
+                        )
+                if len(latmap) > 2 and self.show_dots:
                     plottarget.plot(fitline, spls, "g-", linewidth=0.7)
                 if spls[j] >= thr_spl or len(latmap) <= 2:
                     IO[j] = sf_cvt * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
@@ -529,6 +535,11 @@ class ABR:
 
             plottarget.set_ylabel("dBSPL")
             plottarget.set_xlabel("T (ms)")
+            plottarget.set_xlim(0, 8.0)
+            plottarget.set_ylim(10.0, 115.0)
+            plottarget.set_title(
+                datatitle, y=1.0, fontdict={"fontsize": 7, "ha": "center", "va": "top"}
+            )
 
             if superIOPlot is not None:  # Plot superimposed IO curves
                 datatitle_short = f"{str(self.datapath.parts[-1]):s}/{s:s}"
@@ -614,11 +625,6 @@ class ABR:
                     )  # color=self.color_map[spls])
                 PSDplot.set_ylim(1e-6, 0.01)
                 PSDplot.set_xlim(100.0, 2000.0)
-        plottarget.set_xlim(0, 8.0)
-        plottarget.set_ylim(10.0, 115.0)
-        plottarget.set_title(
-            datatitle, y=1.0, fontdict={"fontsize": 7, "ha": "center", "va": "top"}
-        )
 
         if superIOPlot is not None:
             legend = superIOPlot.legend(loc="upper left")
@@ -974,6 +980,10 @@ def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
         h = 2.5 * m
     else:
         h = 3
+    horizontalspacing = 0.08
+    if n > 5:
+        horizontalspacing = 0.08/(n/5.)
+
     Plot_f = PH.regular_grid(
         m,
         n,
