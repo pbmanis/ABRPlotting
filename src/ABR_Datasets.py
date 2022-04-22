@@ -100,5 +100,7 @@ ABR_Datasets = {
     "Eveleen": {"dir": "Eveleen's ABRs", "term": "\r", "minlat": 2.2, "invert": False},
     "Amber": {"dir": "Amber_ABR_data", "term": "\r", "minlat": 2.2, "invert": True},
     "Reggie": {"dir": "Reggie_E", "term": "\r", "minlat": 2.2, "invert": True,
-            "sample_freq": 50000.0},
+            "sample_freq": 50000.0, 
+            "markers": {"WT": ("s", "end"), "KO": ("o", "end"), "Unsure": ("x", "any")},
+            },
 }

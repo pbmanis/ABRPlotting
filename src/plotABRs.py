@@ -96,6 +96,8 @@ class ABR:
             self.max_colors, list(range(self.max_colors))
         )  # make a default map, but overwrite for true number of datasets
         self.psdIOPlot = False
+        self.superIOLabels = []
+
 
     def characterizeDataset(self):
         """
@@ -241,8 +243,36 @@ class ABR:
 
         # exit()
 
+    def getMarkerStyle(self, directory:str=""):
+        markerstyle = "x"  # default
+        group = "Unidentified"
+        dname = Path(directory).name
+        # print('directory: ', dname)
+        if "markers" in list(self.info.keys()):
+            # print("finding markers", s)
+            # parse the marker information
+            marker_info = self.info["markers"]
+            # marker_info is a dict with code: (markerstyle, location)
+            # where code is a string to find in the directory name
+            # markersytle is a matlab marker style
+            # location is "any" (anywhere in the name) or "end" (find at the end of the string)
+            for mi in list(marker_info.keys()):
+                if marker_info[mi][1] == "any":
+                    found = dname.find(mi)
+                    if found >= 0:
+                        markerstyle = marker_info[mi][0]
+                        group = mi
+                elif marker_info[mi][1] == "end":
+                    if dname.endswith(mi):
+                        markerstyle = marker_info[mi][0]
+                        group = mi
+            # print("markerstyle: ", markerstyle)
+        else:
+            pass
+            # print("Using default marker")
+        return markerstyle, group
 
-    def getClickData(self, select):
+    def getClickData(self, select: str="", directory:str=""):
         """
         Gets the click data for the current selection
         The resulting data is held in a dictionary structured as
@@ -256,6 +286,7 @@ class ABR:
         select, freqs = self.adjustSelection(select)
         # get data for clicks and plot all on one plot
         self.clickdata = {}
+        markerstyle, group = self.getMarkerStyle(directory=directory)
         for i, s in enumerate(self.clickmaps.keys()):
             if select is not None:
                 if s[9:] not in select:
@@ -268,7 +299,8 @@ class ABR:
             #     smarker = "bs-"
             # else:
             #     smarker = "kx-"
-            smarker = "kx-"
+            # Make markers according to the specified codes in the directory
+            
             waves = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
             if waves is None:
                 print(f"Malformed data set for run {s:s}. Continuing")
@@ -282,10 +314,11 @@ class ABR:
                 "waves": waves,
                 "timebase": t,
                 "spls": spls,
-                "marker": smarker,
+                "marker": markerstyle,
+                "group": group,
             }
 
-    def getToneData(self, select):
+    def getToneData(self, select, directory:str=""):
         """
         Gets the tone map data for the current selection
         The resulting data is held in a dictionary structured as
@@ -302,7 +335,9 @@ class ABR:
         # select list should have lists of strings ['0124', '0244'] or Nones...
         print("tonemaps: ", self.tonemaps)
         print("select: ", select)
-        # iterate through the directories, looking for tone maps
+        markerstyle, group = self.getMarkerStyle(directory=directory)
+ 
+        # iterate through the files in the directory, looking for tone maps
         for i, s in enumerate(self.tonemaps.keys()):
             freqs = []
             if select is not None:
@@ -332,7 +367,8 @@ class ABR:
                     "waves": waves,
                     "timebase": t,
                     "spls": spls,
-                    "marker": "ko-",
+                    "marker": markerstyle,
+                    "group": group,
                 }
 
     def plotClicks(
@@ -402,8 +438,8 @@ class ABR:
             sf = 8
             sf_cvt = 1e6
             if index == 0:
-                x = [0.5, 0.5]
-                y = np.array([0, 1e-6])*sf*sf_cvt + 100.0  # put at 100 dB... 
+                x = [7.5, 7.5]
+                y = np.array([0, 1e-6])*sf*sf_cvt + 105.0  # put at 105 dB... 
                 plottarget.plot(x, y, linewidth=1.5)  # put 1 uV cal bar at highest sound level
                 plottarget.text(x[0]+0.1, np.mean(y), s=r"1 $\mu V$",  ha="left", va="center", fontsize=7)
             for j in range(len(spls)):
@@ -439,16 +475,27 @@ class ABR:
                 else:
                     ti = int(fitline[j] / (self.sample_rate * 1000.0))
                     IO[j] = sf_cvt * waves[j][ti]
+            plottarget.set_ylabel("dBSPL")
+            plottarget.set_xlabel("T (ms)")
                     
 
             if superIOPlot is not None:  # superimposed IO plots
                 datatitle_short = f"{str(self.datapath.parts[-1]):s}/{s:s}"
+                if self.clickdata[s]["group"] not in self.superIOLabels:
+                    print("adding group: ", self.clickdata[s]["group"])
+                    print(self.superIOLabels)
+                    self.superIOLabels.append(self.clickdata[s]["group"])
+                    label = self.superIOLabels[-1]
+                else:
+                    label = None
+                    self.superIOLabels.append(label)
                 superIOPlot.plot(
                     spls,
                     sf_cvt * A.ppio,
-                    self.clickdata[s]["marker"],
+                    marker = self.clickdata[s]["marker"],
+                    linestyle = '-',
                     color=self.summaryClick_color_map[icol % self.max_colors],
-                    label=datatitle_short,
+                    label=label,
                 )
 
                 # print out the data for import into another plotting program, such as Prism or Igor
@@ -461,7 +508,7 @@ class ABR:
                 print("*" * 20)
 
             if IOplot is not None:  # generic io plot for cell
-                IOplot.set_title(datatitle,  y=0.95,fontdict={"fontsize": 7, "ha": "center", 'va': "top"})  # directory plus file
+                IOplot.set_title(datatitle,  y=1.0,fontdict={"fontsize": 7, "ha": "center", 'va': "top"})  # directory plus file
                 IOplot.plot(
                     spls,
                     sf_cvt * A.ppio,
@@ -488,6 +535,7 @@ class ABR:
                 )
                 IOplot.set_ylim(0, 6.0)  # microvolts
                 IOplot.set_ylabel(f"ABR (uV)")
+                IOplot.set_xlabel("dBSPL")
 
                 if self.psdIOPlot:
                     ax2 = IOplot.twinx()
@@ -502,7 +550,7 @@ class ABR:
                     ax2.tick_params("y", colors="r")
                 if index == 0 and icol == 0:
                     handles, labels = IOplot.get_legend_handles_labels()
-                    legend = IOplot.legend(loc="upper left")
+                    legend = IOplot.legend(loc="center left")
                     for label in legend.get_texts():
                         label.set_fontsize(6)
 
@@ -521,6 +569,8 @@ class ABR:
             legend = superIOPlot.legend(loc="upper left")
             for label in legend.get_texts():
                 label.set_fontsize(5)
+            superIOPlot.set_xlabel("dBSPL")
+            superIOPlot.set_ylabel(f"ABR (uV)")
 
         print("")
         for s in list(thrs.keys()):
@@ -858,38 +908,40 @@ def do_clicks(dsname, mode, top_directory, dirs):
     else:
         clicksel = [None] * len(dirs)
     m, n = PH.getLayoutDimensions(len(clicksel))
-    # rowlen = 8.0
-    # m = int(np.ceil(len(clicksel) / rowlen))
-    # if m == 1:
-    #     n = len(clicksel)
-    # else:
-    #     n = int(rowlen)
+ 
     if m > 1:
         h = 2.5 * m
     else:
         h = 3
-    f, axarr = mpl.subplots(m, n, figsize=(12, h), num="Click Traces")
-    for ax in axarr:
+    Plot_f = PH.regular_grid(m, n, order="rowsfirst", figsize=(11, h), 
+        verticalspacing=0.07, horizontalspacing=0.08)
+    # f, axarr = mpl.subplots(m, n, figsize=(12, h), num="Click Traces")
+    for ax in Plot_f.axarr:
         PH.nice_plot(ax)
-    f2, axarr2 = mpl.subplots(m, n, figsize=(12, h), num="Click IO Summary")
-    for ax in axarr2:
+    #f2, axarr2 = mpl.subplots(m, n, figsize=(12, h), num="Click IO Summary")
+    Plot_f2 = PH.regular_grid(m, n, order="rowsfirst", figsize=(11, h), 
+        verticalspacing=0.07, horizontalspacing=0.08)
+    for ax in Plot_f2.axarr:
         PH.nice_plot(ax)
     #        f3, axarr3 = mpl.subplots(m, n, figsize=(12, h))
     f4, IOax = mpl.subplots(1, 1, figsize=(6, 6), num="Click IO Overlay")
     PH.nice_plot(IOax)
 
-    if axarr.ndim > 1:
-        axarr = axarr.ravel()
-    if axarr2.ndim > 1:
-        axarr2 = axarr2.ravel()
-    fofilename = Path(top_directory, "ClickSummary.pdf")
+    if Plot_f.axarr.ndim > 1:
+        axarr = Plot_f.axarr.ravel()
+    else:
+        axarr = Plot_f.axarr
+    if Plot_f2.axarr.ndim > 1:
+        axarr2 = Plot_f2.axarr.ravel()
+    else:
+        axarr2 = Plot_f2.axarr
     nsel = len(clicksel)
     print("Nsel: ", nsel)
     for icol, k in enumerate(range(nsel)):
         P = ABR(Path(top_directory, dirs[k]), mode, info=ABR_Datasets[dsname])
         if icol == 0:
             P.summaryClick_color_map = P.makeColorMap(nsel, list(range(nsel)))
-        P.getClickData(select=clicksel[k])
+        P.getClickData(select=clicksel[k], directory=dirs[k])
         P.plotClicks(
             select=clicksel[k],
             plottarget=axarr[k],
@@ -897,11 +949,14 @@ def do_clicks(dsname, mode, top_directory, dirs):
             IOplot=axarr2[k],
             colorindex=icol,
         )
-    mpl.figure("Click Traces")
+    mpl.figure(Plot_f.figure_handle)
+    fofilename = Path(top_directory, "ClickSummary.pdf")
     mpl.savefig(fofilename)
-    mpl.figure("Click IO Summary")
+
+    mpl.figure(Plot_f2.figure_handle)
     fo2filename = Path(top_directory, "ClickIOSummary.pdf")
     mpl.savefig(fo2filename)
+
     mpl.figure("Click IO Overlay")
     fo4filename = Path(top_directory, "ClickIOOverlay.pdf")
     mpl.savefig(fo4filename)
@@ -919,7 +974,7 @@ def do_tones(dsname, mode, top_directory, dirs):
     with PdfPages(fofilename) as pdf:
         for k in range(len(tonesel)):
             P = ABR(Path(top_directory, dirs[k]), mode)
-            P.getToneData(select=tonesel[k])
+            P.getToneData(select=tonesel[k], directory=dirs[k])
             P.plotTones(select=tonesel[k], pdf=pdf)
             allthrs[dirs[k]] = P.thrs
     population_thrdata = P.plotToneThresholds(allthrs, num="Tone Thresholds")
