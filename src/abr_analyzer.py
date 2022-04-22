@@ -3,6 +3,7 @@ from pathlib import Path
 from re import S
 from termios import NL1
 from tkinter import NONE
+from typing import Union, List
 
 import matplotlib.cm
 import matplotlib.pyplot as mpl
@@ -20,6 +21,13 @@ class Analyzer(object):
     """
 
     def __init__(self, sample_frequency: float = 1e5):
+        """Initialize the analyzer
+
+        Parameters
+        ----------
+        sample_frequency : float, optional
+            sample frequency for the traces, by default 1e5 khz
+        """        
         self.ppioMarker = "s"
         self.rmsMarker = "o"
         self.psdMarker = "*"
@@ -43,7 +51,21 @@ class Analyzer(object):
         self.rms_baseline = self.measure_rms(baseline)
         # self.specpower(waves)
 
-    def peaktopeak(self, tr):
+    def peaktopeak(self, tr:Union[List, np.ndarray]) -> np.ndarray:
+        """Measure the peak to peak values in a set of traces
+        Works on the data in self.waves, and computes the p-p values
+        for each trace.
+
+        Parameters
+        ----------
+        tr : List, np.ndarray
+            start and end times for the 
+        Returns
+        -------
+        pp : np.ndarray
+            peak-to-peak measure of data in the window for each wave
+
+        """
         tx = self.gettimeindices(tr)
         pp = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
@@ -51,15 +73,23 @@ class Analyzer(object):
         return pp
 
     def get_triphasic(self, min_lat: float = 2.2, dev: float = 2.5):
-        """
-        Use Buran's peakdetect routine to find the peaks and returan a list
+        """Use Brad Buran's peakdetect routine to find the peaks and returan a list
         of peaks. Works 3 times - first run finds all the positive peaks, and
         the second run finds the negative peaks that follow the positive peaks.
         The last run finds the next positive peak after the negative peak.
         This yields P1-N1-P2, which is the returned value.
         Note that the peaks from peakdetect may not be "aligned" in the sense that it is possible
         to find two positive peaks in succession without a negative peak.
+
+        Parameters
+        ----------
+        min_lat : float, optional
+            Minimum latency, msec, by default 2.2
+        dev : float, optional
+            "deviation" or threshold, by default 2.5 x the reference or
+            baseline time window.
         """
+
         p1 = {}
         n1 = {}
         p2 = {}
@@ -91,7 +121,21 @@ class Analyzer(object):
                 p2[j] = np.nan
         self.p1n1p2 = (p1, n1, p2)
 
-    def measure_rms(self, tr):
+    def measure_rms(self, tr:Union[List, np.ndarray]) -> np.ndarray:
+        """Measure the rms values in a set of traces
+        Works on the data in self.waves, and computes the rms values
+        for each trace.
+
+        Parameters
+        ----------
+        tr : List, np.ndarray
+            start and end times for the measurement
+        Returns
+        -------
+        rms : np.ndarray
+            peak-to-peak measure of data in the window for each wave
+
+        """
         tx = self.gettimeindices(tr)
         rms = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
@@ -116,13 +160,16 @@ class Analyzer(object):
         fs = 1.0 / self.sample_rate
         psd = [None] * waves.shape[0]
         psdwindow = np.zeros(waves.shape[0])
-        print("win: ", win)
         cmap = matplotlib.cm.get_cmap("tab20")
+        nperseg = 256
+        maxseg = win[1]-win[0]
+        if maxseg < nperseg:
+            nperseg = maxseg
         for i in range(waves.shape[0]):
             freqs, psd[i] = scipy.signal.welch(
                 1e6 * waves[i][win[0] : win[1]],
                 fs,
-                nperseg=256,
+                nperseg=nperseg,
                 nfft=8192,
                 scaling="density",
             )
@@ -150,64 +197,89 @@ class Analyzer(object):
         self.psdwindow = psdwindow
         return psdwindow
 
-    def thresholds(self, waves, spls, tr=[1.0, 8.0], reftimes=[20, 25], SD=65.0):
-        """
+    def thresholds(self, waves: np.ndarray, spls:Union[List, np.ndarray], tr=[1.0, 8.0], reftimes=[20, 25], SD=3.0):
+        """Measure the threshold for a response in each wave
         Auto threshold detection:
         BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104
         Use last 10 msec of 25 msec window for SD estimates
         Computes SNR (max(abs(signal))/reference SD) for a group of traces
-        The reference SD is the MEDIAN SD across the intensity run.
+        The reference SD is the MEDIAN SD across the entire intensity run,
+        to minimize the effects of noise in just one trace.
 
+        Parameters
+        ----------
+        waves : np.ndarray
+            waveforms, as a 2D array
+        spls : Union[List, np.darray]
+            List of sound pressure levels corresponding to the waveforms
+        tr : list, optional
+            time window for measuring the responses, by default [1.0, 8.0]
+        reftimes : list, optional
+            time window for the "baseline", by default [20, 25]
+        SD : float, optional
+            Size of response relative to baseline to be
+            considered a signal, by default 3.0
 
-        """
+        Returns
+        -------
+        float
+            threshold value (SPL)
+        """ 
         refwin = self.gettimeindices(reftimes)
         sds = np.std(waves[:, refwin[0] : refwin[-1]], axis=1)
         self.median_sd = np.nanmedian(sds)
         tx = self.gettimeindices(tr)
         self.max_wave = np.max(np.fabs(waves[:, tx[0] : tx[-1]]), axis=1)
         true_thr = np.max(spls)
-        # if len(thr) > 0:
         for i, s in enumerate(spls):
             j = len(spls) - i - 1
             if self.max_wave[j] >= self.median_sd * SD:
                 true_thr = spls[j]
             else:
                 break
-        # else:
-        #     t = len(spls)-1
-        print("thr: ", true_thr)
-
-        return true_thr  # spls[thr[0]]
-        # (thr,) = np.where(
-        #     self.max_wave >= self.median_sd * SD
-        # )  # find criteria threshold
-        # (thrx,) = np.where(
-        #     np.diff(thr) == 1
-        # )  # find first contiguous point (remove low threshold non-contiguous)
-        # if len(thrx) > 0:
-        #     return spls[thr[thrx[0]]]
-        # else:
-        #     return np.nan
-
+    
+        return true_thr  
+    
     def threshold_spec(
         self,
-        waves,
-        spls,
+        waves:Union[List, np.ndarray],
+        spls:Union[List, np.ndarray],
         tr=[1.0, 8.0],
         reftimes=[20, 25],
         spec_bandpass=[800.0, 1200.0],
         SD=4.0,
     ):
-        """
-        Auto threshold detection:
+        """Auto threshold detection:
         BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104
-        Use last 10 msec of 15 msec window for SD estimates
+        Use last part of the response window for SD estimates
         Computes SNR (max(abs(signal))/reference SD) for a group of traces
         The reference SD is the MEDIAN SD across the intensity run.
 
-        MODIFIED version: criteria based on power spec
+        MODIFIED version: criteria based on power spectrum in a narrow power
+        window. 
 
-        """
+        Parameters
+        ----------
+        waves : Union[List, np.ndarray]
+            waveforms to measure (2D array)
+        spls : Union[List, np.ndarray]
+            spls corresponding to first dimension of the waveforms
+        tr : list, optional
+            response window, by default [1.0, 8.0] (msec)
+        reftimes : list, optional
+            baseline window, by default [20, 25] (msec)
+        spec_bandpass : list, optional
+            bandpass window to measure the spectrum: by default [800.0, 1200.0]
+        SD : float, optional
+            relative size of the response in the response window, compared
+            to the "baseline" window, to consider the presence of a valid response,
+            by default 4.0
+
+        Returns
+        -------
+        float
+            SPL threshold for a response
+        """  
         showspec = False
         # print('max time: ', np.max(self.timebase))
         refwin = self.gettimeindices(reftimes)
@@ -235,27 +307,15 @@ class Analyzer(object):
             ax2=ax[1],
             lt="-",
         )
-        # (thr,) = np.where(
-        #     self.max_wave >= self.median_sd * SD
-        # )  # find all spls that meet the criteria threshold
-        # then find the lowest one for whcih ALL higher SPLs are also
-        # above threshold
-        # print("thr: ", thr)
-        print("spl: ", spls)
+
         true_thr = np.max(spls)
-        # if len(thr) > 0:
         for i, s in enumerate(spls):
             j = len(spls) - i - 1
             if self.max_wave[j] >= self.median_sd * SD:
                 true_thr = spls[j]
             else:
                 break
-        # else:
-        #     t = len(spls)-1
-        print("thr: ", true_thr)
 
         if showspec:
             mpl.show()
-        return true_thr  # spls[thr[0]]
-        # else:
-        #     return np.nan
+        return true_thr
