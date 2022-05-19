@@ -3,7 +3,7 @@ from pathlib import Path
 from re import S
 from termios import NL1
 from tkinter import NONE
-from typing import Union, List
+from typing import List, Union
 
 import matplotlib.cm
 import matplotlib.pyplot as mpl
@@ -34,42 +34,57 @@ class Analyzer(object):
         self.baselineMarker = "+"
         self.sample_freq = sample_frequency
 
-    def analyze(self, timebase, waves):
+    def set_baseline(self, timebase, baseline:List=[20, 25]):
+        if np.max(timebase) < baseline[0]:
+            baseline = [np.max(timebase)-2.0, np.max(timebase)]
+        return baseline
+    
+    def analyze(self, timebase:np.ndarray, waves:np.ndarray, response_window:List=[2.2, 8.0]):
+        """Perform initial analysis to get Buran's results, peak-to-peak IO,
+        and the rms of the signal an the baseline.
 
+        Parameters
+        ----------
+        timebase : np.ndarray
+            The timebase for the data (msec)
+        waves : np.ndarray
+            The SPL x npoints array of abr waves (in V)
+        response_window : list, optional (msec)
+            Time window to use for the response, by default [2.2, 8.0]
+        """
         # self.sample_rate = 0.001 * (timebase[1] - timebase[0])
         # self.sample_freq = 1.0 / self.sample_rate
         self.sample_rate = 1.0 / self.sample_freq
         self.waves = waves
         self.timebase = timebase
+        baseline = self.set_baseline(timebase)
 
-        response_range = [2.2, 8]  # window, in msec...
-        baseline = [20, 25]  # [0.0, 0.8]
-
-        self.get_triphasic(min_lat=response_range[0], dev=2.5)
-        self.ppio = self.peaktopeak(response_range)
-        self.rms_response = self.measure_rms(response_range)
+        self.get_triphasic(min_lat=response_window[0], dev=2.5)
+        self.ppio = self.peaktopeak(response_window) - self.peaktopeak(baseline)
+        self.rms_response = self.measure_rms(response_window)
         self.rms_baseline = self.measure_rms(baseline)
         # self.specpower(waves)
 
-    def peaktopeak(self, tr:Union[List, np.ndarray]) -> np.ndarray:
+    def peaktopeak(self, time_window:Union[List, np.ndarray]) -> np.ndarray:
         """Measure the peak to peak values in a set of traces
         Works on the data in self.waves, and computes the p-p values
         for each trace.
 
         Parameters
         ----------
-        tr : List, np.ndarray
-            start and end times for the 
+        time_window : List, np.ndarray
+            start and end times for the measurement.
+
         Returns
         -------
         pp : np.ndarray
             peak-to-peak measure of data in the window for each wave
 
         """
-        tx = self.gettimeindices(tr)
+        tx = self.gettimeindices(time_window)
         pp = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
-            pp[i] = np.max(self.waves[i][tx]) - np.min(self.waves[i][tx])
+            pp[i] = np.max(self.waves[i,tx]) - np.min(self.waves[i,tx])
         return pp
 
     def get_triphasic(self, min_lat: float = 2.2, dev: float = 2.5):
@@ -122,14 +137,14 @@ class Analyzer(object):
                 p2[j] = np.nan
         self.p1n1p2 = (p1, n1, p2)
 
-    def measure_rms(self, tr:Union[List, np.ndarray]) -> np.ndarray:
+    def measure_rms(self, time_window:Union[List, np.ndarray]) -> np.ndarray:
         """Measure the rms values in a set of traces.
         Works on the data in self.waves, and computes the rms values
         for each trace.
 
         Parameters
         ----------
-        tr : List, np.ndarray
+        time_window : List, np.ndarray
             start and end times for the measurement
         Returns
         -------
@@ -137,7 +152,8 @@ class Analyzer(object):
             peak-to-peak measure of data in the window for each wave
 
         """
-        tx = self.gettimeindices(tr)
+
+        tx = self.gettimeindices(time_window)
         rms = np.zeros(self.waves.shape[0])
         for i in range(self.waves.shape[0]):
             rms[i] = np.std(self.waves[i][tx])
@@ -198,7 +214,12 @@ class Analyzer(object):
         self.psdwindow = psdwindow
         return psdwindow
 
-    def thresholds(self, waves: np.ndarray, spls:Union[List, np.ndarray], tr=[1.0, 8.0], reftimes=[20, 25], SD=3.0):
+    def thresholds(self, 
+        waves: np.ndarray, 
+        spls:Union[List, np.ndarray], 
+        response_window=[1.0, 8.0], 
+        baseline_window=[20, 25],
+        SD=3.0):
         """Measure the threshold for a response in each wave
         Auto threshold detection: BMC Neuroscience200910:104  DOI:
         10.1186/1471-2202-10-104 Use last 10 msec of 25 msec window for SD
@@ -212,9 +233,9 @@ class Analyzer(object):
             waveforms, as a 2D array
         spls : Union[List, np.darray]
             List of sound pressure levels corresponding to the waveforms
-        tr : list, optional
+        response_window : list, optional
             time window for measuring the responses, by default [1.0, 8.0]
-        reftimes : list, optional
+        baseline_window : list, optional
             time window for the "baseline", by default [20, 25]
         SD : float, optional
             Size of response relative to baseline to be
@@ -225,10 +246,10 @@ class Analyzer(object):
         float
             threshold value (SPL)
         """ 
-        refwin = self.gettimeindices(reftimes)
+        refwin = self.gettimeindices(baseline_window)
         sds = np.std(waves[:, refwin[0] : refwin[-1]], axis=1)
         self.median_sd = np.nanmedian(sds)
-        tx = self.gettimeindices(tr)
+        tx = self.gettimeindices(response_window)
         self.max_wave = np.max(np.fabs(waves[:, tx[0] : tx[-1]]), axis=1)
         true_thr = np.max(spls)
         for i, s in enumerate(spls):
@@ -244,8 +265,8 @@ class Analyzer(object):
         self,
         waves:Union[List, np.ndarray],
         spls:Union[List, np.ndarray],
-        tr=[1.0, 8.0],
-        reftimes=[20, 25],
+        response_window=[1.0, 8.0],
+        baseline_window=[20, 25],
         spec_bandpass=[800.0, 1200.0],
         SD=4.0,
     ):
@@ -264,9 +285,9 @@ class Analyzer(object):
             waveforms to measure (2D array)
         spls : Union[List, np.ndarray]
             spls corresponding to first dimension of the waveforms
-        tr : list, optional
+        response_window : list, optional
             response window, by default [1.0, 8.0] (msec)
-        reftimes : list, optional
+        baseline_window : list, optional
             baseline window, by default [20, 25] (msec)
         spec_bandpass : list, optional
             bandpass window to measure the spectrum: by default [800.0, 1200.0]
@@ -281,8 +302,7 @@ class Analyzer(object):
             SPL threshold for a response
         """  
         showspec = False
-        # print('max time: ', np.max(self.timebase))
-        refwin = self.gettimeindices(reftimes)
+        refwin = self.gettimeindices(self.set_baseline(self.timebase, baseline=baseline_window))
         if showspec:
             fig, ax = mpl.subplots(1, 2, figsize=(10, 5))
         else:
@@ -297,7 +317,7 @@ class Analyzer(object):
             lt="--",
         )
         self.median_sd = np.nanmedian(sds)
-        tx = self.gettimeindices(tr)
+        tx = self.gettimeindices(response_window)
         self.max_wave = self.specpower(
             waves,
             spls,

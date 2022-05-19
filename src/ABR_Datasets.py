@@ -36,33 +36,27 @@ ABR_Datasets = {
         "term": "\r",
         "minlat": 2.2,
     },
-    "TessaCBA": {"dir": "Tessa/CBA", "term": "\r", "minlat": 2.2, "invert": True},
-    "TessaCBANE": {
-        "dir": "Tessa/CBA_NoiseExposed",
-        "term": "\r",
-        "minlat": 2.2,
-        "invert": True,
-    },
+
     "CNTNAP2X": {"dir": "Tessa/CNTNAP2", "term": "\r", "minlat": 2.2, "invert": True},
-    "CNTNAP2Het": {
+    "CNTNAP2_Het": {
         "dir": "Tessa/CNTNAP2_Het",
         "term": "\r",
         "minlat": 2.2,
         "invert": True,
     },
-    "CNTNAP2HG": {
+    "CNTNAP2_HG": {
         "dir": "Tessa/CNTNAP2_Het_GP4.3",
         "term": "\r",
         "minlat": 2.2,
         "invert": True,
     },
-    "CNTNAP2KO": {
+    "CNTNAP2_KO": {
         "dir": "Tessa/CNTNAP2_KO",
         "term": "\r",
         "minlat": 2.2,
         "invert": True,
     },
-    "CNTNAP2WT": {
+    "CNTNAP2_WT": {
         "dir": "Tessa/CNTNAP2_WT",
         "term": "\r",
         "minlat": 2.2,
@@ -74,22 +68,29 @@ ABR_Datasets = {
         "minlat": 2.2,
         "invert": True,
     },
-    "TessaVGAT": {
+    "Tessa_VGAT": {
         "dir": "Tessa/Tessa_ABR_data/VGAT",
         "term": "\r",
         "minlat": 2.4,
         "invert": True,
-        "markers": {"VGATWT": ("s", "end"), "VGAT": ("o", "end"), "Unsure": ("x", "any")},
+        "markers": {"VGATWT": ("s", "any"), "VGATFF": ("o", "any"), "Unsure": ("x", "any")},
     },
-    "TessaFVB": {
-        "dir": "Tessa/Tessa_ABR_data/FVB",
+    "Tessa_VGATNIHL": {
+        "dir": "Tessa/VGAT_NIHL",
+        "term": "\r",
+        "minlat": 2.4,
+        "invert": True,
+        "markers": {"VGATWT": ("s", "any"), "VGATFF": ("o", "any"), "Unsure": ("x", "any")},
+    },
+    "Tessa_FVB": {
+        "dir": "Tessa/FVB",
         "term": "\r",
         "minlat": 2.4,
         "invert": True,
         "show_dots": False,
         "markers": {"FVB": ("s", "end"), "Unsure": ("x", "any")},
     },
-    "TessaCBA": {
+    "Tessa_CBA": {
         "dir": "Tessa/Tessa_ABR_data/CBA",
         "term": "\r",
         "minlat": 2.4,
@@ -97,7 +98,19 @@ ABR_Datasets = {
         "show_dots": False,
         "markers": {"M": ("s", "any"), "F": ("o", "any")},
     },
-    "TessaNF107": {
+    "Tessa_CBA2": {
+        "dir": "Tessa/CBA", 
+        "term": "\r", 
+        "minlat": 2.2, 
+        "invert": True
+        },
+    "Tessa_CBA_NE": {
+        "dir": "Tessa/CBA_NoiseExposed",
+        "term": "\r",
+        "minlat": 2.2,
+        "invert": True,
+    },
+    "Tessa_NF107": {
         "dir": "Tessa/Tessa_ABR_data/NF107",
         "term": "\r",
         "minlat": 2.4,
