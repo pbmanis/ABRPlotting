@@ -11,6 +11,7 @@ mypy==0.782
 # requirements
 matlab
 h5py
+mat4py
 numpy>=1.20.40
 numba>=0.43.1
 scipy
@@ -21,5 +22,5 @@ pyqt5-sip
 # PyQt5_sip-12.10.1
 matplotlib>=3.5.0
 
-# -e /Users/pbmanis/Desktop/Python/pylibrary
--e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary #@f16bcbe490e8a11d99792dfd65d3ed18a0cd6756#egg=pylibrary
+-e /Users/pbmanis/Desktop/Python/pylibrary
+# -e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary #@f16bcbe490e8a11d99792dfd65d3ed18a0cd6756#egg=pylibrary

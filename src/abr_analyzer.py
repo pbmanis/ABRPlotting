@@ -39,7 +39,7 @@ class Analyzer(object):
             baseline = [np.max(timebase)-2.0, np.max(timebase)]
         return baseline
     
-    def analyze(self, timebase:np.ndarray, waves:np.ndarray, response_window:List=[2.2, 8.0]):
+    def analyze(self, timebase:np.ndarray, waves:np.ndarray, response_window:List=[2.2, 8.0], dev=2.5):
         """Perform initial analysis to get Buran's results, peak-to-peak IO,
         and the rms of the signal an the baseline.
 
@@ -51,6 +51,7 @@ class Analyzer(object):
             The SPL x npoints array of abr waves (in V)
         response_window : list, optional (msec)
             Time window to use for the response, by default [2.2, 8.0]
+        dev: for peak detection, deviation (4-5 seems good)
         """
         # self.sample_rate = 0.001 * (timebase[1] - timebase[0])
         # self.sample_freq = 1.0 / self.sample_rate
@@ -59,7 +60,7 @@ class Analyzer(object):
         self.timebase = timebase
         baseline = self.set_baseline(timebase)
 
-        self.get_triphasic(min_lat=response_window[0], dev=2.5)
+        self.get_triphasic(min_lat=response_window[0], dev=dev)
         self.ppio = self.peaktopeak(response_window) - self.peaktopeak(baseline)
         self.rms_response = self.measure_rms(response_window)
         self.rms_baseline = self.measure_rms(baseline)
@@ -113,7 +114,7 @@ class Analyzer(object):
             p1[j] = peakdetect.find_np(
                 self.sample_freq,
                 self.waves[j, :],
-                nzc_algorithm_kw={"dev": 1.0},
+                nzc_algorithm_kw={"dev": dev},
                 guess_algorithm_kw={"min_latency": min_lat},
             )
 
@@ -135,7 +136,7 @@ class Analyzer(object):
                 )  # find negative peaks after positive peaks
             else:
                 p2[j] = np.nan
-        self.p1n1p2 = (p1, n1, p2)
+        self.p1n1p2 = {'p1': p1, 'n1': n1, 'p2': p2}
 
     def measure_rms(self, time_window:Union[List, np.ndarray]) -> np.ndarray:
         """Measure the rms values in a set of traces.
@@ -251,24 +252,68 @@ class Analyzer(object):
         self.median_sd = np.nanmedian(sds)
         tx = self.gettimeindices(response_window)
         self.max_wave = np.max(np.fabs(waves[:, tx[0] : tx[-1]]), axis=1)
-        true_thr = np.max(spls)
+        true_thr = 110. # np.max(spls) + 10  # force to have a special value
+        n_consec_fails = 0
+        last_p1_lat = 0
+        self.p1_latencies = []
         for i, s in enumerate(spls):
             j = len(spls) - i - 1
-            if self.max_wave[j] >= self.median_sd * SD:
+            p1_index = self.p1n1p2['p1'][j][0]
+            n1_index = self.p1n1p2['n1'][j][0]
+            p2_index = self.p1n1p2['p2'][j][0]
+            p1_lat = self.timebase[p1_index]
+            n1_lat = self.timebase[n1_index]
+            p2_lat = self.timebase[p2_index]
+            if p1_lat > 3.5:
+                n_consec_fails += 1
+                if n_consec_fails >= 2:
+                    break
+                continue
+            if p1_lat > last_p1_lat:
+                last_p1_lat = p1_lat  # first one, save it
+                self.p1_latencies.append([s, p1_lat])
+                n_consec_fails = 0
+            if p1_lat < (last_p1_lat - 0.3):
+                n_consec_fails += 1
+                if n_consec_fails >= 2:
+                    break
+                continue
+            # symmertry ratio of latencies
+            sym = (n1_lat-p1_lat)/(p2_lat-n1_lat)
+            print("sym: ", sym)
+            if (((n1_lat - p1_lat) > 0.8) or
+                (p2_lat < n1_lat) or
+                (p2_lat - p1_lat) > 1.5 or
+                (p2_lat - n1_lat) > 1.25 or
+                sym > 1.6 or sym < 0.5):
+                n_consec_fails += 1
+                if n_consec_fails >= 2:
+                    break
+                continue           
+
+            # print('p1n1p2: p1: ', self.p1n1p2['p1'][j][0], waves[i, self.p1n1p2['p1'][j][0]])
+            # print('p1n1p2: n1: ', self.p1n1p2['n1'][j][0], waves[i, self.p1n1p2['n1'][j][0]])
+            # print(waves[j, self.p1n1p2['p1'][j][0]:self.p1n1p2['n1'][j][0]])
+            p1n1 = ((waves[j, p1_index]+waves[j, p2_index])/2.0) -waves[j, n1_index]
+            # print('p1n1: ', p1n1)
+            # print(self.median_sd * SD)
+            if p1n1 >= self.median_sd * SD:
                 true_thr = spls[j]
+                n_consec_fails = 0
             else:
-                break
-    
+                n_consec_fails += 1
+                if n_consec_fails >= 2:
+                    break
         return true_thr  
-    
+
     def threshold_spec(
         self,
         waves:Union[List, np.ndarray],
         spls:Union[List, np.ndarray],
         response_window=[1.0, 8.0],
         baseline_window=[20, 25],
-        spec_bandpass=[800.0, 1200.0],
         SD=4.0,
+        spec_bandpass=[800.0, 1200.0],
     ):
         """Auto threshold detection:
         BMC Neuroscience200910:104  DOI: 10.1186/1471-2202-10-104 Use last part
@@ -328,7 +373,8 @@ class Analyzer(object):
             lt="-",
         )
 
-        true_thr = np.max(spls)
+        true_thr = 110. # np.max(spls) + 10  # force to have a value outside the stimulus range
+        # so we can detect the maximum as a threshold as well.
         for i, s in enumerate(spls):
             j = len(spls) - i - 1
             if self.max_wave[j] >= self.median_sd * SD:
