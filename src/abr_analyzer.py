@@ -34,6 +34,8 @@ class Analyzer(object):
         self.baselineMarker = "+"
         self.sample_freq = sample_frequency
 
+
+
     def set_baseline(self, timebase, baseline:List=[20, 25]):
         if np.max(timebase) < baseline[0]:
             baseline = [np.max(timebase)-2.0, np.max(timebase)]
@@ -280,7 +282,7 @@ class Analyzer(object):
                 continue
             # symmertry ratio of latencies
             sym = (n1_lat-p1_lat)/(p2_lat-n1_lat)
-            print("sym: ", sym)
+            # print("sym: ", sym)
             if (((n1_lat - p1_lat) > 0.8) or
                 (p2_lat < n1_lat) or
                 (p2_lat - p1_lat) > 1.5 or

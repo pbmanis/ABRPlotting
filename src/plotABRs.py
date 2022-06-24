@@ -7,11 +7,12 @@ make plots that correctly assign each subject with markers and labels.
 
 """
 
+import datetime
+import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
-import re
-from typing import Union, List
+from typing import List, Union
 
 import mat4py
 import numpy as np
@@ -70,9 +71,10 @@ class ABR:
         # Set some default parameters for the data and analyses
 
         if "sample_freq" in list(info.keys()):
-            self.sample_freq = 50000.0  # Hz
+            self.sample_freq = info["sample_freq"]  # Hz
         else:
             self.sample_freq = 100000.0
+
         self.sample_rate = (
             1.0 / self.sample_freq
         )  # standard interpolated sample rate for matlab abr program: 10 microsecnds
@@ -356,18 +358,16 @@ class ABR:
                 if s[9:] not in select:
                     continue
 
-            waves = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
+            waves, tb = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
             if waves is None:
                 print(f"Malformed data set for run {s:s}. Continuing")
                 continue
             waves = waves[::-1]  # reverse order to match spls
-            t = np.linspace(
-                0, waves.shape[1] * self.sample_rate * 1000.0, waves.shape[1]
-            )
+
             spls = self.clickmaps[s]["SPLs"]  # get spls
             self.clickdata[s] = {
                 "waves": waves,
-                "timebase": t,
+                "timebase": tb,
                 "spls": spls,
                 "marker": markerstyle,
                 "group": group,
@@ -404,17 +404,15 @@ class ABR:
             # now we can build the tonemapdata
             self.tonemapdata[s] = OrderedDict()
             for fr in self.tonemaps[s]["Freqs"]:
-                waves = self.get_combineddata(s, self.tonemaps[s], freq=fr)
+                waves, tb = self.get_combineddata(s, self.tonemaps[s], freq=fr)
                 if waves is None:
                     print(f"Malformed data set for run {s:s}. Continuing")
                     continue
-                t = np.linspace(
-                    0, waves.shape[1] * self.sample_rate * 1000.0, waves.shape[1]
-                )
+
                 spls = self.tonemaps[s]["SPLs"]
                 self.tonemapdata[s][fr] = {
                     "waves": waves,
-                    "timebase": t,
+                    "timebase": tb,
                     "spls": spls,
                     "marker": markerstyle,
                     "group": group,
@@ -462,15 +460,23 @@ class ABR:
         icol = colorindex
         IO_DF = []  # build a dataframe of the IO funcitons from a list.
 
-
         for index, s in enumerate(list(self.clickdata.keys())):
             datatitle = f"{str(self.datapath.parts[-1]):s}\n{s:s}"
             # datatitle = datatitle.replace('_', '\_')  # if TeX is enabled, will need to escape the underscores
             waves = self.clickdata[s]["waves"]
-            t = self.clickdata[s]["timebase"]
+            t = np.array(self.clickdata[s]["timebase"])
             spls = self.clickdata[s]["spls"]
             ppio = np.zeros(len(spls))
-
+            #Build a pandas dataframe to write a CSV file out.
+            columns = ['time']
+            splnames = [f"{int(spl):d}" for spl in spls]
+            columns.extend(splnames)
+            waves_df = pd.DataFrame(columns=columns)
+            print(waves_df.head())
+            waves_df['time'] = tuple(t)
+            for i, spln in enumerate(splnames):
+                waves_df[spln] = waves[i]*1e6  # convert to microvolts for the CSV file
+            waves_df.to_csv(f"{str(self.datapath.parts[-1]):s}"+".csv")
             A.analyze(t, waves, dev=self.dev)
             pnp = A.p1n1p2
             p1 = pnp['p1']
@@ -490,7 +496,7 @@ class ABR:
 
             halfspl = np.max(spls) / 2.0
 
-            # generate a line demacating the P1 (first wave)
+            # generate a line demarcating the P1 (first wave)
             latmap = []
             spllat = []
             for j in range(len(spls)):
@@ -567,7 +573,7 @@ class ABR:
 
             plottarget.set_ylabel("dBSPL")
             plottarget.set_xlabel("T (ms)")
-            plottarget.set_xlim(0, 8.0)
+            plottarget.set_xlim(0, 10.0)
             plottarget.set_ylim(10.0, 115.0)
             plottarget.set_title(
                 datatitle, y=1.0, fontdict={"fontsize": 7, "ha": "center", "va": "top"}
@@ -986,7 +992,7 @@ class ABR:
         frstd = None
         return (thrs_sorted, frmean, frstd)
 
-    def get_combineddata(self, datasetname, dataset, freq=None, lineterm="\r"):
+    def get_combineddata(self, datasetname, dataset, freq=None, lineterm="\r")-> (np.array, np.array):
         """
         Read the data sets and combine the p (condensation) and n
         (rarefaction) data sets for alternating polarity stimuli.
@@ -1010,18 +1016,19 @@ class ABR:
         waves : numpy array
             Waveforms, as a nxm array, where n is the number of intensities, and
             m is the length of each waveform
+        tb: numpy array for the time base
 
         """
         if dataset["stimtype"] == "click":
             fnamepos = datasetname + "-p.txt"
             fnameneg = datasetname + "-n.txt"
-            waves = self.read_dataset('click', fnamepos, fnameneg, lineterm)
-            return waves
+            waves, tb = self.read_dataset('click', fnamepos, fnameneg, lineterm)
+            return waves, tb
         if dataset["stimtype"] == "tonepip":
             fnamepos = datasetname + "-p-%.3f.txt" % freq
             fnameneg = datasetname + "-n-%.3f.txt" % freq
-            waves = self.read_dataset('tonepip', fnamepos, fnameneg, lineterm)
-            return waves
+            waves, tb = self.read_dataset('tonepip', fnamepos, fnameneg, lineterm)
+            return waves, tb
 
     def read_dataset(self, datatype:str="click", fnamepos:str="", fnameneg:str="", lineterm="\r"):
         """
@@ -1045,6 +1052,7 @@ class ABR:
         waveform
             Waveform, as a nxm array, where n is the number of intensities,
             and m is the length of each waveform
+        timebase
 
         """
         # handle missing files.
@@ -1076,19 +1084,29 @@ class ABR:
             names = cnames,
             engine="python"
         )
-        waves = np.zeros((len(posf.columns), len(posf[cnames[0]])))
+        npoints = len(posf[cnames[0]])
+        tb = np.linspace(
+                0, npoints * self.sample_rate * 1000.0, npoints
+        )
+        if np.max(tb) > 25.0:
+            u = np.where(tb < 25.0)
+            tb = tb[u]
+        npoints = tb.shape[0]
+
+        waves = np.zeros((len(posf.columns), npoints))
+
         for i, cn in enumerate(posf.columns):
-            waves[i,:] = (posf[cn]+negf[cn])/2.0
+            waves[i,:] = (posf[cn][:npoints]+negf[cn][:npoints])/2.0
 
         for i in range(waves.shape[0]):
-            waves[i, -1] = waves[i, -2]  # remove nan from end of waveform...
+            # waves[i, -1] = waves[i, -2]  # remove nan from end of waveform...
             waves[i,:] = self.filter(
                 waves[i,:], 4, self.lpf, self.hpf, samplefreq=self.sample_freq
             )
             if self.invert:
                 waves[i,:] = -waves[i,:]
 
-        return waves
+        return waves, tb
 
     def filter(self, data, order, lowpass, highpass, samplefreq, ftype="butter"):
         """
@@ -1265,17 +1283,27 @@ def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
     nsel = len(clicksel)
     allthrs = {}
     IO_DF = []
-    for icol, k in enumerate(range(nsel)):
-        
+    # dates = [s.name for s in dirs]
+    # dt = []
+    # for d in dates:
+    #     s = d.split('_')
+    #     s = s[0].split('-')
+    #     dt.append(datetime.date(int(s[2]), int(s[0]), int(s[1])))
+    # dts = pd.Series(dt).sort_values(ascending=True)
+
+    # list_order = dts.index.tolist()
+
+    for icol, k in enumerate(range(len(dirs))): # list_order):
+
         P = ABR(Path(top_directory, dirs[k]), "clicks", info=ABR_Datasets[dsname], datasetname = dsname)
         if icol == 0:
             P.summaryClick_color_map = P.makeColorMap(nsel, list(range(nsel)))
         P.getClickData(select=clicksel[k], directory=dirs[k])
         IOdata = P.plotClicks(
             select=clicksel[k],
-            plottarget=axarr[k],
+            plottarget=axarr[icol],
             superIOPlot=IOax[0],
-            IOplot=axarr2[k],
+            IOplot=axarr2[icol],
             colorindex=icol,
         )
         dirname = str(Path(dirs[k].name))
@@ -1298,6 +1326,16 @@ def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
             mew=1.0,
             linewidth=2.0, markersize=1,
             )
+    clickIODF.to_csv('ClickIO.csv')
+
+    spls = unique(set(clickIODF['spl']))
+    clickIOWTlist = []
+    clickIOKOlist = []
+    subjs = unique(set(clickIODF['subject']))
+    for icol in subjs:
+        if clickIODF.at['group'] == 'WT':
+            clickIOWT['subject']
+
     IOax[0].legend(loc='upper left', fontsize=7)
     population_thrdata = P.plotClickThresholds(allthrs, name="Click Thresholds", ax=IOax[1])
 
