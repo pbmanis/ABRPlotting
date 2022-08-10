@@ -8,7 +8,7 @@ def getcomputer():
     else:
         computer_name = subprocess.getoutput("scutil --get ComputerName")
     print(computer_name)
-    if computer_name == "Lytle":
+    if computer_name in ["Lytle", "Lytle2"]:
         basedir = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data"
     elif computer_name == "Tamalpais":
         # basedir = '/Users/pbmanis/Desktop/data/ABR_DATA'

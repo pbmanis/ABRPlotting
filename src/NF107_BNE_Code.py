@@ -74,7 +74,7 @@ class Mouse_Info:
     ABRDate: str="",
     RecordDate: str="",
     Group: str="",
-    SPL: float=115,
+    SPL: Union[float, None] = None,
     ExposeAge: int=0, # or 39...
     RecordAge: int=0,
     PostExposure: int=3, # or 14
@@ -86,157 +86,256 @@ class Mouse_Info:
     Quality: str="ok",
 
 """
-The coding dictionary holds 3 items:
-[0] = animal ID
-[1] = code
-[2] = "ok" or "outlier" according to how the noise exposure is
+The original coding dictionary holds information about the animal ID,
+    exposure and recording dates, dob, SPL, cross reference to lab notebooks,
+    the abr directory, the tone, and click file names, maybe the cells that are good, etc.
+    
 """
 basepath = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Tessa/NF107Ai32')
     
 coding_NF107_nihl = {
-    "Animal1": Mouse_Info(ID="Animal1", ExposeDate="2018.06.01", ABRDate="2018.06.15", RecordDate="2018.06.19", DOB="2018.03.31", Group="A", Sex="M", 
+    "Animal1": Mouse_Info(ID="Animal1", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
+        RecordDate="2018.06.19", DOB="2018.03.31", Group="A", Sex="M", 
         SPL=109, ExposeAge=52, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M1_NF107Ai32_Exposed", 
         ABRToneFiles=["20180615-1112", "20180615-1132", "20180615-1209"],
         ABRClickFiles=["20180615-1223"], 
-        Cells="", Quality="ok"),
+        Cells="", Quality="ok",
+        ),
 
-    "Animal2": Mouse_Info(ID="Animal2", ExposeDate="2018.06.01", ABRDate="2018.06.15", RecordDate="2018.06.20", DOB="2018.03.31", Group="A", 
+    "Animal2": Mouse_Info(ID="Animal2", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
+        RecordDate="2018.06.20", DOB="2018.03.31", Group="A", 
         Sex="M", SPL=109, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M2_NF107Ai32_Exposed",
         ABRToneFiles=["20180615-1233", "20180615-1255", "20180615-1232"], ABRClickFiles=["20180615-1103"],
-        Cells="", Quality="ok"), #["Animal2", "A", "ok"],
+        Cells="", Quality="ok",
+        ), #["Animal2", "A", "ok"],
 
-    "Animal3": Mouse_Info(ID="Animal3", ExposeDate="2018.06.01", ABRDate="2018.06.15", RecordDate = "2018.06.22", DOB="2018.03.31", Group="A", 
+    "Animal3": Mouse_Info(ID="Animal3", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
+        RecordDate = "2018.06.22", DOB="2018.03.31", Group="A", 
         Sex="M", SPL=109, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M3_NF107Ai32_Exposed",
         ABRToneFiles=["20180615-1354", "20180615-1414", "20180615-1451"], ABRClickFiles=["20180615-1345"],
-        Cells="", Quality="ok"), #["Animal3", "A", "ok"],
+        Cells="", Quality="ok",
+        ), #["Animal3", "A", "ok"],
 
-    "MS3": Mouse_Info(ID="MS3", ExposeDate="2018.07.03", RecordDate="2018.07.17", ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M", 
+    "MS3": Mouse_Info(ID="MS3", ExposeDate="2018.07.03", RecordDate="2018.07.17", 
+        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M", 
         SPL=109, Book=2, Page=33,
         ABRPath="07-16-2018_ABR_P107_M4_NF107Ai32",
         ABRClickFiles=["20180716-1441"], 
         ABRToneFiles = ["20180716-1511", "20170716-1554"],
-        Cells="", Quality="ok"), #["MS3", "D", "outlier"],  # B
+        Cells="", Quality="ok",
+        ), #["MS3", "D", "outlier"],  # B
 
-    "MS8": Mouse_Info(ID="MS8", ExposeDate="2018.07.03", RecordDate="2018.07.20", ABRDate="2018.07.16", Group="A", DOB="2018.03.31", Sex="M",
+    "MS8": Mouse_Info(ID="MS8", ExposeDate="2018.07.03", RecordDate="2018.07.20", 
+        ABRDate="2018.07.16", Group="A", DOB="2018.03.31", Sex="M",
         SPL=109, Book=2, Page=32,
         ABRPath="07-16-2018_ABR_P107_M3_NF107Ai32",
         ABRClickFiles=["20180716-1303"], 
         ABRToneFiles = ["20180716-1313", "20170716-1336", "20170716-1419"], 
         Cells="", Quality="ok"), # ["MS8", "C", "outlier"],  # A
 
-    "MS4": Mouse_Info(ID="MS4", ExposeDate="2018.07.03", RecordDate="2018.07.23", ABRDate="2018.07.16", Group="A_O", DOB="2018.03.31", Sex="M",
+    "MS4": Mouse_Info(ID="MS4", ExposeDate="2018.07.03", RecordDate="2018.07.23",
+        ABRDate="2018.07.16", Group="A_O", DOB="2018.03.31", Sex="M",
         SPL=109, Book=2, Page=33,
         ABRPath="07-16-2018_ABR_P107_M4_NF107Ai32",
         ABRClickFiles=["20180716-1441"], 
         ABRToneFiles = ["20180716-1511", "20170716-1554"],
         Cells="", Quality="ok"), # ["MS4", "C", "outlier"],  # A
 
-    "MS1": Mouse_Info(ID="MS1", ExposeDate="2018.07.03", RecordDate="2018.07.25", ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M",
+    "MS1": Mouse_Info(ID="MS1", ExposeDate="2018.07.03", RecordDate="2018.07.25",
+        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M",
         SPL=109, Book=2, Page=32,
         ABRPath="07-16-2018_ABR_P107_M2_NF107Ai32",
         ABRClickFiles=["20180716-1143"],
         ABRToneFiles=["20180716-1152", "20180716-1211", "20180716-1248"],
          Cells="", Quality="ok"), #["MS1", "D", "outlier"],  # B
          
-    "NI4": Mouse_Info(ID="NI4", ExposeDate="2018.07.03", RecordDate="2018.07.27", ABRDate="2018.07.25", Group="B", DOB="2018.05.27", Sex="M",
+    "NI4": Mouse_Info(ID="NI4", ExposeDate="2018.07.03", RecordDate="2018.07.27",
+        ABRDate="2018.07.25", Group="B", DOB="2018.05.27", Sex="M",
         SPL=0, Book=2, Page=34,
         ABRPath="07-25-2018_ABR_P59_M2_NF107Ai32",
         ABRClickFiles=["20180725-1513"],
         ABRToneFiles = ["20180725-1522", "20180725-1542", "20180725-1619"], 
         Cells="", Quality="ok"), #["NI4", "B", "ok"],
 
-    "NI3": Mouse_Info(ID="NI3", ExposeDate="2018.07.03", RecordDate="2018.07.30", ABRDate="2018.07.17", Group="B", DOB="2018.05.27", Sex="M",
+    "NI3": Mouse_Info(ID="NI3", ExposeDate="2018.07.03", RecordDate="2018.07.30",
+        ABRDate="2018.07.17", Group="B", DOB="2018.05.27", Sex="M",
         SPL=0, Book=2, Page=33,
         ABRPath="07-17-2018_ABR_P51_M1_NF107Ai32",
         ABRClickFiles=["20180717-1023"],
         ABRToneFiles = ["20180717-1035", "20180717-1058", "20180717-1135"],
          Cells="", Quality="ok"), # ["NI3", "B", "ok"],
 
-    "NI1": Mouse_Info(ID="NI1", ExposeDate="2018.07.03", RecordDate="2018.08.01", ABRDate="2018.07.17",Group="A", DOB="2018.05.27", Sex="M",
+    "NI1": Mouse_Info(ID="NI1", ExposeDate="2018.07.03", RecordDate="2018.08.01",
+        ABRDate="2018.07.17",Group="A", DOB="2018.05.27", Sex="M",
         SPL=109, Book=2, Page=34,
         ABRPath="07-17-2018_ABR_P51_M2_NF107Ai32",
         ABRClickFiles=["20180717-1149"],
         ABRToneFiles = ["20180717-1159", "20180717-1219", "20180717-1304"],
         Cells="", Quality="ok"),  # ["NI1", "A", "ok"],
 
-    "NI2": Mouse_Info(ID="NI2", ExposeDate="2018.07.03", RecordDate="2018.08.03", ABRDate="2018.07.25", Group="A", DOB="2018.05.27", Sex="M",
+    "NI2": Mouse_Info(ID="NI2", ExposeDate="2018.07.03", RecordDate="2018.08.03",
+        ABRDate="2018.07.25", Group="A", DOB="2018.05.27", Sex="M",
         SPL=109, Book=2, Page=34,
         ABRPath="07-25-2018_ABR_P59_M1_NF107Ai32",
         ABRClickFiles=["20180725-0906"],
         ABRToneFiles = ["20180725-0917", "20180725-0942", "20180725-1021"], 
         Cells="", Quality="ok"), # ["NI2", "A", "ok"],
 
-    # The next ones do not appear in the book or in the NF107AI32 folder
-    # "unclipped": Mouse_Info(ID="unclipped", RecordDate="2018.09.12", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["unclipped", "A", "ok"],
-    # "clipped": Mouse_Info(ID="clipped", RecordDate="2018.09.19", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["clipped", "A", "ok"],
-    # ---------------------------added after 11/28/2018
-#    The first for "animal#" do not appear to be part of this dataset either
-    # "animal1": Mouse_Info(ID="animal1", RecordDate="2018.10.30", Group="b", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal1", "B", "ok"],
-    # "animal2": Mouse_Info(ID="animal2", RecordDate="2018.10.31", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal2", "A", "ok"],
-    # "animal3": Mouse_Info(ID="animal3", RecordDate="2018.11.06", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal3", "A", "ok"],
-    # "animal4": Mouse_Info(ID="animal4", RecordDate="2018.11.08", Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal4", "B", "ok"],
+#     # The next ones do not appear in the book or in the NF107AI32 folder
+#     # "unclipped": Mouse_Info(ID="unclipped", RecordDate="2018.09.12", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["unclipped", "A", "ok"],
+#     # "clipped": Mouse_Info(ID="clipped", RecordDate="2018.09.19", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["clipped", "A", "ok"],
+#     # ---------------------------added after 11/28/2018
+# #    The first for "animal#" do not appear to be part of this dataset either
+#     # "animal1": Mouse_Info(ID="animal1", RecordDate="2018.10.30", Group="b", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal1", "B", "ok"],
+#     # "animal2": Mouse_Info(ID="animal2", RecordDate="2018.10.31", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal2", "A", "ok"],
+#     # "animal3": Mouse_Info(ID="animal3", RecordDate="2018.11.06", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal3", "A", "ok"],
+#     # "animal4": Mouse_Info(ID="animal4", RecordDate="2018.11.08", Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal4", "B", "ok"],
 
-    "OE1": Mouse_Info(ID="OE1", ExposeDate="2018.12.04", RecordDate="2018.12.27", ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
+    "OE1": Mouse_Info(ID="OE1", ExposeDate="2018.12.04", RecordDate="2018.12.27",
+        ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
         SPL=109, Book=2, Page=63,
         ABRPath="12-21-2018_ABR_P49_M3_NF107Ai32",
-
-    ABRClickFiles=["2018."],
-    Cells="", Quality="ok"), # ["OE1", "A", "ok"],
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"), # ["OE1", "A", "ok"],
     
-    "OE4": Mouse_Info(ID="OE4", ExposeDate="2018.12.04", RecordDate="2018.12.27", ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
+    "OE4": Mouse_Info(ID="OE4", ExposeDate="2018.12.04", RecordDate="2018.12.27",
+        ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
         SPL=109, Book=2, Page=63,
-    ABRClickFiles=["2018."],
-    Cells="", Quality="ok"), # ["OE4", "A", "ok"],
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"), # ["OE4", "A", "ok"],
 
-    "OE3": Mouse_Info(ID="OE3", ExposeDate="2018.12.04", RecordDate="2019.01.02", ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
+    "OE3": Mouse_Info(ID="OE3", ExposeDate="2018.12.04", RecordDate="2019.01.02",
+        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
         SPL=0, Book=2, Page=63,
         ABRClickFiles=["2018."],
-    Cells="", Quality="ok"), # ["OE3", "B", "ok"],
+        Cells="", Quality="ok"), # ["OE3", "B", "ok"],
 
-    "OE2": Mouse_Info(ID="OE2", ExposeDate="2018.12.04", RecordDate="2019.01.04", ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
+    "OE2": Mouse_Info(ID="OE2", ExposeDate="2018.12.04", RecordDate="2019.01.04",
+        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
         SPL=0, Book=2, Page=63,
         ABRPath="12-21-2018_ABR_P49_M1_NF107Ai32",
         ABRClickFiles=["2018."],
-    Cells="", Quality="ok"), # ["OE2", "B", "ok"],
+        Cells="", Quality="ok"), # ["OE2", "B", "ok"],
 
-    "BNE9": Mouse_Info(ID="BNE9", RecordDate="2019.01.09", Group="AA", DOB="2018.11.05", Sex="M",
-    ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE9", "AA", "ok"],
+    "BNE1": Mouse_Info(ID="BNE1", ExposeDate="2018.12.13", RecordDate="2019.01.23",
+        ABRDate="2018.12.27", Group="AA", ABRClickFiles=["2018."], 
+        SPL=109, Book=2, Page=65,
+        ABRPath="01-02-2019_ABR_P49_M2_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok",
+        ), 
 
-    "BNE4": Mouse_Info(ID="BNE4", ExposeDate="2018.12.13", RecordDate="2019.01.11", Group="AA", ABRClickFiles=["2018."], 
+    "BNE2": Mouse_Info(ID="BNE2", ExposeDate="2018.12.13", RecordDate="2019.01.16",
+        ABRDate="2018.12.27", Group="AA", ABRClickFiles=["2018."], 
+        SPL=109, Book=2, Page=65,
+        ABRPath="01-02-2019_ABR_P49_M3_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"),    
+
+    "BNE3": Mouse_Info(ID="BNE3", ExposeDate="2018.12.13", RecordDate="2019.01.18",
+        Group="AA", ABRClickFiles=["2018."], # aka BNE2?
+        SPL=109, Book=2, Page=65,
+        ABRPath="", 3 "01-02-2019_ABR_P49_M2_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"),  
+
+    "BNE4": Mouse_Info(ID="BNE4", ExposeDate="2019.12.20", RecordDate="2019.01.11",
+        ABRDate="2018.12.27", Group="AA", DOB="2018.11.05", Sex="M",
+        SPL=109, Book=2, Page=65,
+        ABRPath="01-02-2019_ABR_P49_M4_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"), 
     
-        Cells="", Quality="ok"), # ["BNE4", "AA", "ok"],
-    "BNE5": Mouse_Info(ID="BNE5", ExposeDate="2018.12.13", RecordDate="2019.01.14", Group="B", ABRClickFiles=["2018."], 
-    
+    "BNE5": Mouse_Info(ID="BNE5", ExposeDate="2018.12.13", RecordDate="2019.01.14",
+        ABRDate="2018.12.27", Group="B", ABRClickFiles=["2018."], 
+        SPL=0, Book=2, Page=65,  # according to p65, BNE5 was not exposed.
+        ABRPath="01-02-2019_ABR_P49_M1_NF107Ai32",
+        ABRClickFiles=["2018."],
         Cells="", Quality="ok"), # ["BNE5", "B", "ok"],  # note reads: Animal #BNE5 (1-5?)
-    "BNE2": Mouse_Info(ID="BNE2", ExposeDate="2018.12.13", RecordDate="2019.01.16", Group="AA", ABRClickFiles=["2018."], 
-        Cells="", Quality="ok"), # ["BNE2", "AA", "ok"],  # Notes both read: Animal #BNE2 (1-2)
+                   
+# #BNE6 was not exposed ::: P67 book2
+# #BNE11,12,13 not exposed:: P67, book2
+     
+    "BNE7": Mouse_Info(ID="BNE7", ExposeDate="2019.12.20", RecordDate="2019.01.24",
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.05", Sex="M",
+        SPL=109, Book=2, Page=67,
+        ABRPath="01-02-2019_ABR_P49_M3_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"), 
     
-    "BNE2?": Mouse_Info(ID="BNE2?", ExposeDate="2018.12.13", RecordDate="2019.01.18", Group="AA", ABRClickFiles=["2018."], 
-        Cells="", Quality="ok"), # ["BNE2", "AA", "ok"],  # Animal #BNE2 (1-2)
+    "BNE9": Mouse_Info(ID="BNE9", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.05", Sex="M",
+        SPL=109, Book=2, Page=67,
+        ABRPath="01-02-2019_ABR_P49_M4_NF107Ai32",
+        ABRClickFiles=["2018."],
+        Cells="", Quality="ok"), 
+
+#     "BNE7?": Mouse_Info(ID="BNE7?", RecordDate="2019.01.30",
+#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), #  [ "BNE7", "A", "ok",],  # ???? Animal #BNE17/18/20 (need verification from Tessa) No discernable marks on mouse ears/toes.
+
+#     "BNE18": Mouse_Info(ID="BNE18", RecordDate="2019.02.01",
+#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE18", "A", "ok"],  # Clear upper? left notch
+
+#     "BNE24": Mouse_Info(ID="BNE24", RecordDate="2019.02.15", 
+#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE24", "A", "ok"],  # left upper ear notch
+
+#     "BNE21": Mouse_Info(ID="BNE21", RecordDate="2019.02.18", 
+#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE21", "A", "ok"],  # both ears notched
+
+#     "BNE23": Mouse_Info(ID="BNE23", RecordDate="2019.02.19",
+#         Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE23", "B", "ok"],  # lower right ear notched
+
+#     "BNE22": Mouse_Info(ID="BNE22", RecordDate="2019.02.20",
+#         Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE22", "B", "ok"],  # lower left ear notched
+
+#     "BNE27": Mouse_Info(ID="BNE27", RecordDate="2019.02.22",
+#         Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), #["BNE27", "AA", "ok"],  # P24 At exposure
+#     # '2019.02.25': Mouse_Info(ID="NI3", RecordDate="2018.08.01", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ['BNE25', 'AA', 'no'], # no data from this animal  P24 at
+#     # exposure
+
+#     "BNE32": Mouse_Info(ID="BNE32", RecordDate="2019.03.04",
+#         Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE32", "AA", "ok"],
+
+#     "BNE31": Mouse_Info(ID="BNE31", RecordDate="2019.03.05",
+#         Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE31", "AA", "ok"],
+
+#     "BNE30": Mouse_Info(ID="BNE30", RecordDate="2019.03.06",
+#         Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE30", "AA", "ok"],
+
+#     "BNE2Y": Mouse_Info(ID="BNE2Y", RecordDate="2019.03.01",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE2Y", "AAA", "ok"],  # noise exposed high level; 3 day wait
+
+#     "BNE3Y": Mouse_Info(ID="BNE3Y", RecordDate="2019.03.15",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BND3Y", "AAA", "ok"],
+#     "?????": Mouse_Info(ID="?????", RecordDate="2019.03.18",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["???", "AAA", "ok"],
+#     "BXXXX": Mouse_Info(ID="BXXXX", RecordDate="2019.04.15",
+#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BXXX", ""],
+
+#     "BNE102": Mouse_Info(ID="BNE102", RecordDate="2019.03.18",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"),
+
+#     "BNE105": Mouse_Info(ID="BNE105", RecordDate="2019.05.10",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"),
+
+#     "BNE106": Mouse_INFO(ID="BNE106", RecordDate="2019.05.13",
+#         Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"),
     
-    "BNE1": Mouse_Info(ID="BNE1", ExposeDate="2018.12.13", RecordDate="2019.01.23", Group="AA", ABRClickFiles=["2018."], 
-        Cells="", Quality="ok"), # ["BNE1", "AA", "ok"],  # Animal #BNE1 (1-1)
-    
-    "BNE7": Mouse_Info(ID="BNE7", RecordDate="2019.01.24", Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE7", "AA", "ok"],  # Animal #BNE7 (1-7)
-    "BNE7?": Mouse_Info(ID="BNE7?", RecordDate="2019.01.30", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), #  [ "BNE7", "A", "ok",],  # ???? Animal #BNE17/18/20 (need verification from Tessa) No discernable marks on mouse ears/toes.
-    "BNE18": Mouse_Info(ID="BNE18", RecordDate="2019.02.01", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE18", "A", "ok"],  # Clear upper? left notch
-    "BNE24": Mouse_Info(ID="BNE24", RecordDate="2019.02.15", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE24", "A", "ok"],  # left upper ear notch
-    "BNE21": Mouse_Info(ID="BNE21", RecordDate="2019.02.18", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE21", "A", "ok"],  # both ears notched
-    "BNE23": Mouse_Info(ID="BNE23", RecordDate="2019.02.19", Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE23", "B", "ok"],  # lower right ear notched
-    "BNE22": Mouse_Info(ID="BNE22", RecordDate="2019.02.20", Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE22", "B", "ok"],  # lower left ear notched
-    "BNE27": Mouse_Info(ID="BNE27", RecordDate="2019.02.22", Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), #["BNE27", "AA", "ok"],  # P24 At exposure
-    # '2019.02.25': Mouse_Info(ID="NI3", RecordDate="2018.08.01", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ['BNE25', 'AA', 'no'], # no data from this animal  P24 at
-    # exposure
-    "BNE32": Mouse_Info(ID="BNE32", RecordDate="2019.03.04", Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE32", "AA", "ok"],
-    "BNE31": Mouse_Info(ID="BNE31", RecordDate="2019.03.05", Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE31", "AA", "ok"],
-    "BNE30": Mouse_Info(ID="BNE30", RecordDate="2019.03.06", Group="AA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE30", "AA", "ok"],
-    "BNE2Y": Mouse_Info(ID="BNE2Y", RecordDate="2019.03.01", Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE2Y", "AAA", "ok"],  # noise exposed high level; 3 day wait
-    "BNE3Y": Mouse_Info(ID="BNE3Y", RecordDate="2019.03.15", Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BND3Y", "AAA", "ok"],
-    "?????": Mouse_Info(ID="?????", RecordDate="2019.03.18", Group="AAA", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["???", "AAA", "ok"],
-    "BXXXX": Mouse_Info(ID="BXXXX", RecordDate="2019.04.15", Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BXXX", ""],
+    # "2019.05.13": ["BNE106", "AAA", "ok"],
+    # "2019.05.17": ["BNE107", "AA", "ok"], # check - is this the mouse exposed on 5/3 2019?
+    # "2019.05.31": ["BNE39", "AA", "ok"],
+    # "2019.06.03": ["BNE108", "AAA", "ok"], # exposed on 5/31
+    # "2019.06.04": ["BNE40", "AA", "ok"],
+    # "2019.06.06": ["BNE41", "AA", "ok"],
+    # "2019.06.17": ["BNE42", "AA", "ok"],
+    # "2019.06.18": ["BNE43", "AA", "ok"],
+    # "2019.07.29": ["BNE109", "AAA", "ok"],
+    # "2019.07.30": ["BNE110", "AAA", "ok"],
+    # "2019.08.30": ["BNE112", ]
+
 
 }
 
@@ -283,6 +382,8 @@ P93: 5/21/19: BNE108 noise exposure (115)
 P93: 6/3/19: ABR BNE108
 P93: P32 NF107 noise exposure 2 m, 115dB no label
 P94: 6/17/19 : BNE ? NF107 ABR males, exposed 6/3/19.
+------------ continued: ----------------------
+
 
 """
 

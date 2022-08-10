@@ -7,11 +7,14 @@ __pycache__/
 *.so
 
 # local environment
-./abrp_venv
-abrp_venv
+abrp_venv/*
 
+
+# output datasets
+ABR_CSVs/*
 
 # Distribution / packaging
+.DS_Store
 .Python
 build/
 develop-eggs/

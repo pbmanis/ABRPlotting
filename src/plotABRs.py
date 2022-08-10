@@ -472,11 +472,11 @@ class ABR:
             splnames = [f"{int(spl):d}" for spl in spls]
             columns.extend(splnames)
             waves_df = pd.DataFrame(columns=columns)
-            print(waves_df.head())
+            # print(waves_df.head())
             waves_df['time'] = tuple(t)
             for i, spln in enumerate(splnames):
                 waves_df[spln] = waves[i]*1e6  # convert to microvolts for the CSV file
-            waves_df.to_csv(f"{str(self.datapath.parts[-1]):s}"+".csv")
+            waves_df.to_csv(Path("../ABR_CSVs", f"{str(self.datapath.parts[-1]):s}"+".csv")
             A.analyze(t, waves, dev=self.dev)
             pnp = A.p1n1p2
             p1 = pnp['p1']
@@ -581,12 +581,14 @@ class ABR:
 
             if superIOPlot is not None:  # Plot superimposed IO curves
                 datatitle_short = f"{str(self.datapath.parts[-1]):s}/{s:s}"
-                if self.clickdata[s]["group"] not in self.superIOLabels:
-                    self.superIOLabels.append(self.clickdata[s]["group"])
-                    label = self.superIOLabels[-1]
-                else:
-                    label = None
-                    self.superIOLabels.append(label)
+                # if self.clickdata[s]["group"] not in self.superIOLabels:
+                #     self.superIOLabels.append(self.clickdata[s]["group"])
+                #     label = self.superIOLabels[-1]
+                # else:
+                print("s: ", s)
+                print(self.clickdata[s])
+                label = self.clickdata[s]["ID"]
+                self.superIOLabels.append(label)
                 superIOPlot.plot(
                     spls,
                     sf_cvt * A.ppio,
@@ -1022,7 +1024,12 @@ class ABR:
         if dataset["stimtype"] == "click":
             fnamepos = datasetname + "-p.txt"
             fnameneg = datasetname + "-n.txt"
-            waves, tb = self.read_dataset('click', fnamepos, fnameneg, lineterm)
+            try:
+                waves, tb = self.read_dataset('click', fnamepos, fnameneg, lineterm)
+            except:
+                print(datasetname)
+                print(dataset)
+                raise ValueError()
             return waves, tb
         if dataset["stimtype"] == "tonepip":
             fnamepos = datasetname + "-p-%.3f.txt" % freq
@@ -1057,9 +1064,9 @@ class ABR:
         """
         # handle missing files.
         if not Path(self.datapath, fnamepos).is_file():
-            return None
+            return None, None
         if not Path(self.datapath, fnameneg).is_file():
-            return None
+            return None, None
         print("Reading from: ", self.datapath, fnamepos)
         if datatype == 'click':
             spllist = self.clickmaps[fnamepos[:13]]['SPLs']
@@ -1328,13 +1335,14 @@ def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
             )
     clickIODF.to_csv('ClickIO.csv')
 
-    spls = unique(set(clickIODF['spl']))
+    spls = set(clickIODF['spl'])
     clickIOWTlist = []
     clickIOKOlist = []
-    subjs = unique(set(clickIODF['subject']))
-    for icol in subjs:
-        if clickIODF.at['group'] == 'WT':
-            clickIOWT['subject']
+    # subjs = set(clickIODF['subject'])
+    # print(clickIODF.head())
+    # for icol in subjs:
+    #     if clickIODF.at['group'] == 'WT':
+    #         clickIOWT['subject']
 
     IOax[0].legend(loc='upper left', fontsize=7)
     population_thrdata = P.plotClickThresholds(allthrs, name="Click Thresholds", ax=IOax[1])

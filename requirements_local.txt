@@ -6,7 +6,7 @@ black==19.10b0
 flake8
 vulture
 isort==5.0.2
-mypy==0.782
+mypy==0.971
 
 # requirements
 matlab
@@ -17,8 +17,8 @@ numba>=0.43.1
 scipy
 seaborn
 pandas
-pyqt5==5.13.1
-pyqt5-sip
+PyQt6
+PyQt6-sip
 # PyQt5_sip-12.10.1
 matplotlib>=3.5.0
 
