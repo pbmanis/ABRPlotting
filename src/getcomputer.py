@@ -7,7 +7,7 @@ def getcomputer():
         computer_name = os.environ["COMPUTERNAME"]
     else:
         computer_name = subprocess.getoutput("scutil --get ComputerName")
-    print(computer_name)
+    print("Identifed computer as: ", computer_name)
     if computer_name in ["Lytle", "Lytle2"]:
         basedir = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data"
     elif computer_name == "Tamalpais":
@@ -17,6 +17,7 @@ def getcomputer():
         basedir = "C:/Users/experimenters/Desktop/ABR_Data"
     else:
         raise ValueError("Need valid computer name to set base path to data")
+    print("Identifed computer as: ", computer_name)
     return basedir, computer_name
 
 

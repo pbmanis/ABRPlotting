@@ -6,29 +6,27 @@ way that identifies the subject and experimental group(s). This allows us to
 make plots that correctly assign each subject with markers and labels. 
 
 """
-
-import datetime
-import re
 import sys
+import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import mat4py
 import numpy as np
 import pandas as pd
 import pylibrary.plotting.plothelpers as PH
-import scipy.io
-import scipy.signal
+import scipy
 import seaborn as sns  # makes plot background light grey with grid, no splines. Remove for publication plots
 from matplotlib import pyplot as mpl
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
 
-from . import getcomputer  # stub to return the computer and base directory
-from . import MatFileMethods, abr_analyzer
-from .ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
+import getcomputer  # stub to return the computer and base directory
+import MatFileMethods, abr_analyzer
+import src.ABR_dataclasses as ABRDC
+from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
 
 basedir, computer_name = getcomputer.getcomputer()
 
@@ -46,7 +44,7 @@ class ABR:
         self,
         datapath: str,
         mode: str = "clicks",
-        info: dict = {"invert": False, "minlat": 0.75, "term": "\r"},
+        info: object = ABRDC.ABR_Data(),
         datasetname: str = ""
     ):
         """
@@ -69,21 +67,23 @@ class ABR:
                     editor or is on a windows vs. mac vs linux system)
         """
         # Set some default parameters for the data and analyses
+        print("info: ", info)
 
-        if "sample_freq" in list(info.keys()):
-            self.sample_freq = info["sample_freq"]  # Hz
+
+        if info.sample_freq is not None:
+            self.sample_freq = info.sample_freq  # Hz
         else:
             self.sample_freq = 100000.0
 
         self.sample_rate = (
             1.0 / self.sample_freq
         )  # standard interpolated sample rate for matlab abr program: 10 microsecnds
-        if "spec_bandpass" in list(info.keys()):
-            self.spec_bandpass = info["spec_bandpass"]
+        if info.spec_bandpass is not None:
+            self.spec_bandpass = info.spec_bandpass
         else:
             self.spec_bandpass = [800.0, 1200.0]
-        if "show_dots" in list(info.keys()): # turn off dot plotting.
-            self.show_dots = info["show_dots"]
+        if info.showdots: # turn off dot plotting.
+            self.show_dots = info.showdots
         else:
             self.show_dots = True
 
@@ -103,11 +103,9 @@ class ABR:
 
         self.datapath = Path(datapath)
         self.datasetname = datasetname
-        self.term = info["term"]
-        self.minlat = info["minlat"]
-        self.invert = info[
-            "invert"
-        ]  # data flip... depends on "active" lead connection to vertex (false) or ear (true).
+        self.term = info.term
+        self.minlat = info.minlat
+        self.invert = info.invert # data flip... depends on "active" lead connection to vertex (false) or ear (true).
 
         self.characterizeDataset()
 
@@ -315,9 +313,9 @@ class ABR:
         markerstyle = "x"  # default
         group = "Unidentified"
         dname = Path(directory).name
-        if "markers" in list(self.info.keys()):
+        if self.info.markers is not None:
             # parse the marker information
-            marker_info = self.info["markers"]
+            marker_info = self.info.markers
             # marker_info is a dict with code: (markerstyle, location)
             # where code is a string to find in the directory name
             # markersytle is a matlab marker style
@@ -353,6 +351,10 @@ class ABR:
         # get data for clicks and plot all on one plot
         self.clickdata = {}
         markerstyle, group = self.getMarkerStyle(directory=directory)
+        print(self.info)
+        # print(self.clickmaps.keys())
+        exit()
+
         for i, s in enumerate(self.clickmaps.keys()):
             if select is not None:
                 if s[9:] not in select:
@@ -476,7 +478,7 @@ class ABR:
             waves_df['time'] = tuple(t)
             for i, spln in enumerate(splnames):
                 waves_df[spln] = waves[i]*1e6  # convert to microvolts for the CSV file
-            waves_df.to_csv(Path("../ABR_CSVs", f"{str(self.datapath.parts[-1]):s}"+".csv")
+            waves_df.to_csv(Path("ABR_CSVs", f"{str(self.datapath.parts[-1]):s}"+".csv"))
             A.analyze(t, waves, dev=self.dev)
             pnp = A.p1n1p2
             p1 = pnp['p1']
@@ -587,7 +589,10 @@ class ABR:
                 # else:
                 print("s: ", s)
                 print(self.clickdata[s])
-                label = self.clickdata[s]["ID"]
+                if "ID" in self.clickdata[s]:
+                    label = self.clickdata[s]["ID"]
+                else:
+                    label = s
                 self.superIOLabels.append(label)
                 superIOPlot.plot(
                     spls,
@@ -994,7 +999,7 @@ class ABR:
         frstd = None
         return (thrs_sorted, frmean, frstd)
 
-    def get_combineddata(self, datasetname, dataset, freq=None, lineterm="\r")-> (np.array, np.array):
+    def get_combineddata(self, datasetname, dataset, freq=None, lineterm="\r")-> Tuple[np.array, np.array]:
         """
         Read the data sets and combine the p (condensation) and n
         (rarefaction) data sets for alternating polarity stimuli.
@@ -1209,7 +1214,7 @@ class ABR:
         return w
 
 
-def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
+def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list, ABR_Datasets: object=None):
     """analyze the click data
 
     Parameters
@@ -1223,11 +1228,13 @@ def do_clicks(dsname: str, top_directory: Union[str, Path], dirs: list):
         This routine will look in each subdirectory for
         click data.
     """
-    if "clickselect" in list(ABR_Datasets[dsname].keys()):
-        clicksel = ABR_Datasets[dsname]["clickselect"]
+    if ABR_Datasets[dsname].clickselect != []:
+        clicksel = ABR_Datasets[dsname].clickselect
     else:
         clicksel = [None] * len(dirs)
     m, n = PH.getLayoutDimensions(len(clicksel))
+    # print("Grid: ", m, n)
+    # print("dirs: ", dirs)
 
     if m > 1:
         h = 2.5 * m
@@ -1415,12 +1422,16 @@ def main():
         exit(1)
 
     if dsname not in list(ABR_Datasets.keys()):
-        # print(list(ABR_Datasets.keys()))
-        raise ValueError("Data set %s not found in our list of known datasets")
+        print("These are the known datasets: ")
+        print(list(ABR_Datasets.keys()))
+        raise ValueError("The selected dataset %s not found in our list of known datasets")
     if mode not in ["tones", "clicks"]:
         raise ValueError("Second argument must be tones or clicks")
 
-    top_directory = Path(basedir, ABR_Datasets[dsname]["dir"])
+    print(ABR_Datasets[dsname])
+    top_directory = Path(basedir, ABR_Datasets[dsname].directory)
+    print("top_directory", top_directory)
+    # print(list(Path(top_directory).glob("*")))
 
     dirs = [
         tdir
@@ -1432,10 +1443,10 @@ def main():
     ]
 
     if mode == "clicks":
-        do_clicks(dsname, top_directory, dirs)
+        do_clicks(dsname, top_directory, dirs, ABR_Datasets)
 
     elif mode == "tones":
-        do_tones(dsname, top_directory, dirs)
+        do_tones(dsname, top_directory, dirs, ABR_Datasets)
     else:
         raise ValueError(f"Mode is not known: {mode:s}")
 

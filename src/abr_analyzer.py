@@ -10,9 +10,8 @@ import matplotlib.pyplot as mpl
 import numpy as np
 import scipy.signal
 
-from . import \
-    peakdetect  # from Brad Buran's project, but cloned and modified here
-from .ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
+import peakdetect  # from Brad Buran's project, but cloned and modified here
+from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
 
 
 class Analyzer(object):

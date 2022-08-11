@@ -5,8 +5,8 @@ import numpy as np
 import re
 import datetime
 from pylibrary.tools import cprint
-import src.plotABRs as PA
-
+# import src.plotABRs as PA
+from ABR_dataclasses import Mouse_Info
 CP = cprint.cprint
 """
 
@@ -17,6 +17,9 @@ AA  : NIHL, measured 14 d later, 115 dB SPL
 AAA : NIHL, measured ~ 3d later, 115 dB SPL
 A_O   : Same as A, but "outlier"
 B_O   : Same as B, but "outliter 
+
+Birthdates, IDs and Cage cards are cross referenced to the Archived Colony Record
+from DCM. 
 """
 
 re_control = re.compile(r"(?P<control>control)")
@@ -50,40 +53,13 @@ def mk_datetime(sdate:str):
     _type_
         datetime
     """
-    dt = [int(d) for d in sdate.split('.')]
+    if sdate is None or sdate in ["None", "none", ""]:
+        dt = [1970, 1, 1]
+    else:
+        dt = [int(d) for d in sdate.split('.')]
     dt = datetime.date(dt[0], dt[1], dt[2])
     return dt
 
-
-
-def defemptydict():
-    return {}
-
-
-def defemptylist():
-    return []
-
-@dataclass
-class Mouse_Info:
-    ID: str = "",
-    Book: int=2,
-    Page: int=0,
-    DOB: str="",
-    Sex: str="",
-    ExposeDate: str="",
-    ABRDate: str="",
-    RecordDate: str="",
-    Group: str="",
-    SPL: Union[float, None] = None,
-    ExposeAge: int=0, # or 39...
-    RecordAge: int=0,
-    PostExposure: int=3, # or 14
-    ABRToneFiles: list = field(default_factory=defemptylist),
-    ABRClickFiles: list = field(default_factory=defemptylist),
-    ABRPath: Union[str, Path]="",
-    DataPath: Union[str, Path]="",
-    Cells: list = field(default_factory=defemptylist),
-    Quality: str="ok",
 
 """
 The original coding dictionary holds information about the animal ID,
@@ -94,8 +70,8 @@ The original coding dictionary holds information about the animal ID,
 basepath = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Tessa/NF107Ai32')
     
 coding_NF107_nihl = {
-    "Animal1": Mouse_Info(ID="Animal1", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
-        RecordDate="2018.06.19", DOB="2018.03.31", Group="A", Sex="M", 
+        "Animal1": Mouse_Info(ID="Animal1", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
+        RecordDate="2018.06.19", DOB="2018.03.31", Group="A", Sex="M", Strain="NF107Ai32",
         SPL=109, ExposeAge=52, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M1_NF107Ai32_Exposed", 
         ABRToneFiles=["20180615-1112", "20180615-1132", "20180615-1209"],
@@ -104,23 +80,23 @@ coding_NF107_nihl = {
         ),
 
     "Animal2": Mouse_Info(ID="Animal2", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
-        RecordDate="2018.06.20", DOB="2018.03.31", Group="A", 
-        Sex="M", SPL=109, Book=2, Page=25,
+        RecordDate="2018.06.20", DOB="2018.03.31", Group="A", Sex="M", Strain="NF107Ai32",
+        SPL=109, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M2_NF107Ai32_Exposed",
         ABRToneFiles=["20180615-1233", "20180615-1255", "20180615-1232"], ABRClickFiles=["20180615-1103"],
         Cells="", Quality="ok",
         ), #["Animal2", "A", "ok"],
 
     "Animal3": Mouse_Info(ID="Animal3", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
-        RecordDate = "2018.06.22", DOB="2018.03.31", Group="A", 
-        Sex="M", SPL=109, Book=2, Page=25,
+        RecordDate = "2018.06.22", DOB="2018.03.31", Group="A", Sex="M", Strain="NF107Ai32",
+        SPL=109, Book=2, Page=25,
         ABRPath="06-15-2018_ABR_P52_M3_NF107Ai32_Exposed",
         ABRToneFiles=["20180615-1354", "20180615-1414", "20180615-1451"], ABRClickFiles=["20180615-1345"],
         Cells="", Quality="ok",
         ), #["Animal3", "A", "ok"],
 
     "MS3": Mouse_Info(ID="MS3", ExposeDate="2018.07.03", RecordDate="2018.07.17", 
-        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M", 
+        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=33,
         ABRPath="07-16-2018_ABR_P107_M4_NF107Ai32",
         ABRClickFiles=["20180716-1441"], 
@@ -129,7 +105,7 @@ coding_NF107_nihl = {
         ), #["MS3", "D", "outlier"],  # B
 
     "MS8": Mouse_Info(ID="MS8", ExposeDate="2018.07.03", RecordDate="2018.07.20", 
-        ABRDate="2018.07.16", Group="A", DOB="2018.03.31", Sex="M",
+        ABRDate="2018.07.16", Group="A", DOB="2018.03.31",  Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=32,
         ABRPath="07-16-2018_ABR_P107_M3_NF107Ai32",
         ABRClickFiles=["20180716-1303"], 
@@ -137,7 +113,7 @@ coding_NF107_nihl = {
         Cells="", Quality="ok"), # ["MS8", "C", "outlier"],  # A
 
     "MS4": Mouse_Info(ID="MS4", ExposeDate="2018.07.03", RecordDate="2018.07.23",
-        ABRDate="2018.07.16", Group="A_O", DOB="2018.03.31", Sex="M",
+        ABRDate="2018.07.16", Group="A_O", DOB="2018.03.31",  Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=33,
         ABRPath="07-16-2018_ABR_P107_M4_NF107Ai32",
         ABRClickFiles=["20180716-1441"], 
@@ -145,7 +121,7 @@ coding_NF107_nihl = {
         Cells="", Quality="ok"), # ["MS4", "C", "outlier"],  # A
 
     "MS1": Mouse_Info(ID="MS1", ExposeDate="2018.07.03", RecordDate="2018.07.25",
-        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31", Sex="M",
+        ABRDate="2018.07.16", Group="B_O", DOB="2018.03.31",  Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=32,
         ABRPath="07-16-2018_ABR_P107_M2_NF107Ai32",
         ABRClickFiles=["20180716-1143"],
@@ -153,7 +129,7 @@ coding_NF107_nihl = {
          Cells="", Quality="ok"), #["MS1", "D", "outlier"],  # B
          
     "NI4": Mouse_Info(ID="NI4", ExposeDate="2018.07.03", RecordDate="2018.07.27",
-        ABRDate="2018.07.25", Group="B", DOB="2018.05.27", Sex="M",
+        ABRDate="2018.07.25", Group="B", DOB="2018.05.27",  Sex="M", Strain="NF107Ai32",
         SPL=0, Book=2, Page=34,
         ABRPath="07-25-2018_ABR_P59_M2_NF107Ai32",
         ABRClickFiles=["20180725-1513"],
@@ -161,7 +137,7 @@ coding_NF107_nihl = {
         Cells="", Quality="ok"), #["NI4", "B", "ok"],
 
     "NI3": Mouse_Info(ID="NI3", ExposeDate="2018.07.03", RecordDate="2018.07.30",
-        ABRDate="2018.07.17", Group="B", DOB="2018.05.27", Sex="M",
+        ABRDate="2018.07.17", Group="B", DOB="2018.05.27",  Sex="M", Strain="NF107Ai32",
         SPL=0, Book=2, Page=33,
         ABRPath="07-17-2018_ABR_P51_M1_NF107Ai32",
         ABRClickFiles=["20180717-1023"],
@@ -169,7 +145,7 @@ coding_NF107_nihl = {
          Cells="", Quality="ok"), # ["NI3", "B", "ok"],
 
     "NI1": Mouse_Info(ID="NI1", ExposeDate="2018.07.03", RecordDate="2018.08.01",
-        ABRDate="2018.07.17",Group="A", DOB="2018.05.27", Sex="M",
+        ABRDate="2018.07.17",Group="A", DOB="2018.05.27", Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=34,
         ABRPath="07-17-2018_ABR_P51_M2_NF107Ai32",
         ABRClickFiles=["20180717-1149"],
@@ -177,7 +153,7 @@ coding_NF107_nihl = {
         Cells="", Quality="ok"),  # ["NI1", "A", "ok"],
 
     "NI2": Mouse_Info(ID="NI2", ExposeDate="2018.07.03", RecordDate="2018.08.03",
-        ABRDate="2018.07.25", Group="A", DOB="2018.05.27", Sex="M",
+        ABRDate="2018.07.25", Group="A", DOB="2018.05.27",  Sex="M", Strain="NF107Ai32",
         SPL=109, Book=2, Page=34,
         ABRPath="07-25-2018_ABR_P59_M1_NF107Ai32",
         ABRClickFiles=["20180725-0906"],
@@ -195,89 +171,165 @@ coding_NF107_nihl = {
 #     # "animal4": Mouse_Info(ID="animal4", RecordDate="2018.11.08", Group="B", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["animal4", "B", "ok"],
 
     "OE1": Mouse_Info(ID="OE1", ExposeDate="2018.12.04", RecordDate="2018.12.27",
-        ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
+        ABRDate="2018.12.21", Group="A", DOB="2018.11.05",  Sex="M", Strain="NF107Ai32", CageCard=2858876,
         SPL=109, Book=2, Page=63,
         ABRPath="12-21-2018_ABR_P49_M3_NF107Ai32",
         ABRClickFiles=["2018."],
         Cells="", Quality="ok"), # ["OE1", "A", "ok"],
     
     "OE4": Mouse_Info(ID="OE4", ExposeDate="2018.12.04", RecordDate="2018.12.27",
-        ABRDate="2018.12.21", Group="A", DOB="2018.11.05", Sex="M",
+        ABRDate="2018.12.21", Group="A", DOB="2018.11.05",  Sex="M", Strain="NF107Ai32", CageCard=2858876,
         SPL=109, Book=2, Page=63,
+        ABRPath="12-21-2018_ABR_P49_M3_NF107Ai32",
         ABRClickFiles=["2018."],
         Cells="", Quality="ok"), # ["OE4", "A", "ok"],
 
     "OE3": Mouse_Info(ID="OE3", ExposeDate="2018.12.04", RecordDate="2019.01.02",
-        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
+        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M", Strain="NF107Ai32", CageCard=2858876,
         SPL=0, Book=2, Page=63,
         ABRClickFiles=["2018."],
         Cells="", Quality="ok"), # ["OE3", "B", "ok"],
 
     "OE2": Mouse_Info(ID="OE2", ExposeDate="2018.12.04", RecordDate="2019.01.04",
-        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M",
+        ABRDate="2018.12.21", Group="B", DOB="2018.11.05", Sex="M", Strain="NF107Ai32", CageCard=2858876,
         SPL=0, Book=2, Page=63,
         ABRPath="12-21-2018_ABR_P49_M1_NF107Ai32",
         ABRClickFiles=["2018."],
         Cells="", Quality="ok"), # ["OE2", "B", "ok"],
 
+"""
+----------------------------- HERE ARE the BNE series ------------------------
+BNE 1-13 "Accidentally connected DACOUT1 to SA to Crown. Page 71, Book 2. TFR
+Actual value is not attenuated via PA5.
+Measured exposure is: 103.8 dB SPL for noise (Attenuator was not in line)
+Note that some mice in this range were not noise-exposed.
+pbm 8/10/2022.
+"""
+
     "BNE1": Mouse_Info(ID="BNE1", ExposeDate="2018.12.13", RecordDate="2019.01.23",
-        ABRDate="2018.12.27", Group="AA", ABRClickFiles=["2018."], 
-        SPL=109, Book=2, Page=65,
-        ABRPath="01-02-2019_ABR_P49_M2_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRDate="2018.12.27", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=65,  # Book 2 page 71 Correction to output
+        ABRPath="12-27-2018_ABR_P49_BNE1_NF107Ai32",
+        ABRClickFiles=["20181212-0816"], ABRToneFiles=["20181227-0825","20181227-0830"],
         Cells="", Quality="ok",
         ), 
 
     "BNE2": Mouse_Info(ID="BNE2", ExposeDate="2018.12.13", RecordDate="2019.01.16",
-        ABRDate="2018.12.27", Group="AA", ABRClickFiles=["2018."], 
-        SPL=109, Book=2, Page=65,
-        ABRPath="01-02-2019_ABR_P49_M3_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRDate="2018.12.27", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=65,  # Book 2 page 71 Correction to output
+        ABRPath="12-27-2018_ABR_P49_BNE2_NF107Ai32",
+        ABRClickFiles=["12272018-0920"], ABRToneFiles=["20181227-0929","20181227-0936"],
         Cells="", Quality="ok"),    
 
     "BNE3": Mouse_Info(ID="BNE3", ExposeDate="2018.12.13", RecordDate="2019.01.18",
-        Group="AA", ABRClickFiles=["2018."], # aka BNE2?
-        SPL=109, Book=2, Page=65,
-        ABRPath="", 3 "01-02-2019_ABR_P49_M2_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRDate="2018.12.27", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=65,# Book 2 page 71 Correction to output
+        ABRPath="12-27-2018_ABR_P49_BNE3_NF107Ai32",
+        ABRClickFiles=["12272018-1014"], ABRToneFiles=["20181227-1023", "20181227-1028"],
         Cells="", Quality="ok"),  
 
     "BNE4": Mouse_Info(ID="BNE4", ExposeDate="2019.12.20", RecordDate="2019.01.11",
-        ABRDate="2018.12.27", Group="AA", DOB="2018.11.05", Sex="M",
-        SPL=109, Book=2, Page=65,
-        ABRPath="01-02-2019_ABR_P49_M4_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRDate="2018.12.27", Group="AA",  DOB="2018.11.13", CageCard=2862336, Sex="M",  Strain="NF107Ai32",# DOB="2018.11.05", Sex="M", Where did this date come from?
+        SPL=103.8, Book=2, Page=65, # Book 2 page 71 Correction to output
+        ABRPath="12-27-2018_ABR_P49_BNE4_NF107Ai32",
+        ABRClickFiles=["12272018-1109"], ABRToneFiles=["20181227-1118", "20181227-1124"],
         Cells="", Quality="ok"), 
     
     "BNE5": Mouse_Info(ID="BNE5", ExposeDate="2018.12.13", RecordDate="2019.01.14",
-        ABRDate="2018.12.27", Group="B", ABRClickFiles=["2018."], 
+        ABRDate="2018.12.27", Group="B", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
         SPL=0, Book=2, Page=65,  # according to p65, BNE5 was not exposed.
-        ABRPath="01-02-2019_ABR_P49_M1_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRPath="12-27-2018_ABR_P49_M1_NF107Ai32",
+        ABRClickFiles=["12272018-0646"], ABRToneFiles=["20181227-0656", "20181227-0718"],
         Cells="", Quality="ok"), # ["BNE5", "B", "ok"],  # note reads: Animal #BNE5 (1-5?)
                    
 # #BNE6 was not exposed ::: P67 book2
-# #BNE11,12,13 not exposed:: P67, book2
+    "BNE6": Mouse_Info(ID="BNE6", ExposeDate="2018.12.13", RecordDate="",
+        ABRDate="2018.01.02", Group="B", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=65,  # according to p65, BNE5 was not exposed.
+        ABRPath="01-02-2019_ABR_P50_BNE6_NF107Ai32",
+        ABRClickFiles=["20190102-1230"], ABRToneFiles=["20190102-1249"],
+        Cells="", Quality="ok"), # ["BNE5", "B", "ok"],  # note reads: Animal #BNE5 (1-5?)
      
     "BNE7": Mouse_Info(ID="BNE7", ExposeDate="2019.12.20", RecordDate="2019.01.24",
-        ABRDate="2019.01.02", Group="AA", DOB="2018.11.05", Sex="M",
-        SPL=109, Book=2, Page=67,
-        ABRPath="01-02-2019_ABR_P49_M3_NF107Ai32",
-        ABRClickFiles=["2018."],
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=67, # Book 2 page 71 Correction to output
+        ABRPath="01-02-2019_ABR_P50_BNE7_NF107Ai32",
+        ABRClickFiles=["20190102-0914"], ABRToneFiles=["20190102-0923"],
+        Cells="", Quality="ok"), 
+
+     "BNE8": Mouse_Info(ID="BNE8", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=67, # Book 2 page 71 Correction to output
+        ABRPath="01-02-2019_ABR_P50_BNE8_NF107Ai32",
+        ABRClickFiles=["20190102-1006"], ABRToneFiles=["20190102-1016", "20190102-1022"],
+        Cells="", Quality="ok"), 
+
+    "BNE9": Mouse_Info(ID="BNE9", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=67, # Book 2 page 71 Correction to output
+        ABRPath="01-02-2019_ABR_P50_BNE9_NF107Ai32",
+        ABRClickFiles=["20190102-1111"], ABRToneFiles=["20190102-1126", "20190102-1134"],
+        Cells="", Quality="ok"), 
+
+    "BNE10": Mouse_Info(ID="BNE10", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="2019.01.02", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
+        SPL=103.8, Book=2, Page=67, # Book 2 page 71 Correction to output
+        ABRPath="01-02-2019_ABR_P50_BNE10_NF107Ai32",
+        ABRClickFiles=["20190102-1349"], ABRToneFiles=["20190102-1358", "20190102-1403"],
+        Cells="", Quality="ok"), 
+
+    "BNE11": Mouse_Info(ID="BNE11", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="", Group="B", DOB="2018.11.13", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="",  # no ABRs noted
+        ABRClickFiles=[""],
         Cells="", Quality="ok"), 
     
-    "BNE9": Mouse_Info(ID="BNE9", ExposeDate="2019.12.20", RecordDate="2019.01.09",
-        ABRDate="2019.01.02", Group="AA", DOB="2018.11.05", Sex="M",
-        SPL=109, Book=2, Page=67,
-        ABRPath="01-02-2019_ABR_P49_M4_NF107Ai32",
-        ABRClickFiles=["2018."],
+    "BNE12": Mouse_Info(ID="BNE12", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="", Group="B", DOB="2018.11.13", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="", # no ABRs noted
+        ABRClickFiles=[""],
         Cells="", Quality="ok"), 
+    
+    "BNE13": Mouse_Info(ID="BNE13", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+        ABRDate="2019.01.17", Group="B", DOB="2018.11.13", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="01-17-2019_ABR_P65_BNE13_NF107Ai32",
+        ABRClickFiles=["20190117-1420"], ABRToneFiles=["20190118-1430", "20190117-1449"],
+        Cells="", Quality="ok"), 
+
+    "BNE14": Mouse_Info(ID="BNE14", ExposeDate="2019.01.03", RecordDate="2019.01.09",
+        ABRDate="2019.01.17", Group="AA", DOB="2018.12.03", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="01-17-2019_ABR_P65_BNE13_NF107Ai32",
+        ABRClickFiles=["20190117-1420"], ABRToneFiles=["20190118-1430", "20190117-1449"],
+        Cells="", Quality="ok"), 
+    
+    "BNE15": Mouse_Info(ID="BNE15", ExposeDate="2019.01.03", RecordDate="2019.01.09",
+        ABRDate="2019.01.17", Group="AA", DOB="2018.12.03", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="01-17-2019_ABR_P65_BNE13_NF107Ai32",
+        ABRClickFiles=["20190117-1420"], ABRToneFiles=["20190118-1430", "20190117-1449"],
+        Cells="", Quality="ok"), 
+
+    "BNE16": Mouse_Info(ID="BNE15", ExposeDate="2019.01.03", RecordDate="2019.01.09",
+        ABRDate="2019.01.17", Group="B", DOB="2018.12.03", CageCard=28623367, Sex="M", Strain="NF107Ai32",
+        SPL=0, Book=2, Page=67, # Not exposed
+        ABRPath="01-17-2019_ABR_P65_BNE13_NF107Ai32",
+        ABRClickFiles=["20190117-1420"], ABRToneFiles=["20190118-1430", "20190117-1449"],
+        Cells="", Quality="ok",
+        ), 
+
+# BOOKMARK for data entry 10 Aug2022
 
 #     "BNE7?": Mouse_Info(ID="BNE7?", RecordDate="2019.01.30",
 #         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), #  [ "BNE7", "A", "ok",],  # ???? Animal #BNE17/18/20 (need verification from Tessa) No discernable marks on mouse ears/toes.
 
-#     "BNE18": Mouse_Info(ID="BNE18", RecordDate="2019.02.01",
-#         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE18", "A", "ok"],  # Clear upper? left notch
+    # "BNE18": Mouse_Info(ID="BNE18", ExposeDate="RecordDate="2019.02.01",
+    #     ABRDate"2019.01.24",
+    #     SPL=96.5, Book=2, Page=72,  # 13.5 dB Attn
+    #     Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE18", "A", "ok"],  # Clear upper? left notch
 
 #     "BNE24": Mouse_Info(ID="BNE24", RecordDate="2019.02.15", 
 #         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), # ["BNE24", "A", "ok"],  # left upper ear notch
@@ -387,29 +439,62 @@ P94: 6/17/19 : BNE ? NF107 ABR males, exposed 6/3/19.
 
 """
 
+def verify():
+    """verify the data set is somewhat complete
+
+    Raises:
+        ValueError: if a required field is missing
+    """    
+
+    for subject in list(coding_NF107_nihl.keys()):
+        topdir = coding_NF107_nihl[subject].ABRPath 
+        if topdir == "":
+            continue
+        # print("basepath: ", basepath)
+        # print("topdir: ", topdir)
+        # abrp = Path(basepath, topdir)
+        # for cf in coding_NF107_nihl[subject].ABRClickFiles:
+        #     print(list(Path(abrp).glob(f"{cf:s}*.txt")))
+        #     PA.do_clicks()
+        # for cf in coding_NF107_nihl[subject].ABRToneFiles:
+        #     print(list(Path(abrp).glob(f"{cf:s}*.txt")))
+        try:
+            dob = mk_datetime(coding_NF107_nihl[subject].DOB)
+        except: 
+            print(f"DOB not set for subject - {subject:s}")
+            raise ValueError()
+        try:
+            d_exp = mk_datetime(coding_NF107_nihl[subject].ExposeDate)
+        except:
+            print(f"Exposure date not set for subject - {subject:s}")
+            raise ValueError()
+        try:
+            d_abr = mk_datetime(coding_NF107_nihl[subject].ABRDate)
+        except:
+            print(f"ABR Recording date not set for subject - {subject:s}")
+            raise ValueError()
+        try:
+            d_rec = mk_datetime(coding_NF107_nihl[subject].RecordDate)
+        except:
+            print(f"Recording date not set for subject - {subject:s}")
+            raise ValueError()
+
+        md = get_age(topdir)
+        print(f"Subject: {subject:<12s}")
+        print(f"   Exposure age: {(d_exp-dob).days:4d}  ABR age: {(d_abr-dob).days:4d}  Age at recording: {(d_rec-dob).days:4d}  Time since exposure: {(d_rec-d_exp).days:4d}")
+        if (d_abr-dob).days == md:
+            CP('g', f"   Age in ABR filename:  {md:d}")
+        else:
+            CP('r', f"   Age in ABR filename does not match:  {md:d} vs {(d_abr-dob).days:4d}")
+        
+        # verify we can find and read the abr file
+        import src.plotABRs as pABR
+        from ABR_Datasets import ABR_Datasets 
+        dsname = "somename"
+        P = pABR.ABR(Path(topdir, [coding_NF107_nihl[subject].ABRPath]), "clicks", info=ABR_Datasets[dsname], datasetname = dsname)
+    
 
 
-for subject in list(coding_NF107_nihl.keys()):
-    topdir = coding_NF107_nihl[subject].ABRPath 
-    if topdir == "":
-        continue
-    abrp = Path(basepath, topdir)
-    for cf in coding_NF107_nihl[subject].ABRClickFiles:
-        print(list(Path(abrp).glob(f"{cf:s}*.txt")))
-        PA.do_clicks()
-    # for cf in coding_NF107_nihl[subject].ABRToneFiles:
-    #     print(list(Path(abrp).glob(f"{cf:s}*.txt")))
-    dob = mk_datetime(coding_NF107_nihl[subject].DOB)
-    d_exp = mk_datetime(coding_NF107_nihl[subject].ExposeDate)
-    d_abr = mk_datetime(coding_NF107_nihl[subject].ABRDate)
-    d_rec = mk_datetime(coding_NF107_nihl[subject].RecordDate)
-    md = get_age(topdir)
-    print(f"Subject: {subject:<12s}")
-    print(f"   Exposure age: {(d_exp-dob).days:4d}  ABR age: {(d_abr-dob).days:4d}  Age at recording: {(d_rec-dob).days:4d}  Time since exposure: {(d_rec-d_exp).days:4d}")
-    if (d_abr-dob).days == md:
-        CP('g', f"   Age in ABR filename:  {md:d}")
-    else:
-        CP('r', f"   Age in ABR filename does not match:  {md:d} vs {(d_abr-dob).days:4d}")
-
-
+if __name__ == "__main__":
+    verify()
     
