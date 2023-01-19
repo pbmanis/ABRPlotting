@@ -1,4 +1,14 @@
-# current 10 June 2017
+# This file holds a listing of the ABR datasets, divided by user, experiment(s), mouse type, etc. 
+# This is the primary table used by plotABRs in ABRPlotting to generate plots with superimposed
+# click IO functions, frequency-intensity maps, and "raw" traces. 
+# The dictionaries also specify how to handle different groups (markers), trace inversion, filtering
+# latency etc. 
+# A special field is "codefile". This is the name of a python file that holds additional information
+# about the specific experiments, linking the ABR datasets to specific experimental subjects,
+# their treatment (noise exposure, etc) and physiology data collected in acq4.
+#
+# Original: 10 June 2017
+# Most recent update: 12 August 2022
 # This table should eventually be converted to an excel spreadsheet organized
 # with a worksheet for each data set, and within each worksheet, each subject's information
 # placed in a single row. Make the table pandas-readable.
@@ -141,6 +151,7 @@ ABR_Datasets = {
         invert = True,
         showdots = False,
         markers = {"NF107": ("s", "end"), "NF107_Exposed": ("o", "end"), "Unsure": ("x", "any")},
+        codefile= ""
     ),
     "Tessa_BNE": ABR_Data(
         directory ="Tessa/Tessa_ABR_data/BNE",

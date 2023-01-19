@@ -30,7 +30,7 @@ re_sex = re.compile(r"(?P<sex>\_[MF]+[\d]{0,3}\_)")   # typically, "F" or "M1" ,
 re_age = re.compile(r"(?P<age>_P[\d]{1,3})")
 re_date = re.compile("(?P<date>[\d]{2}-[\d]{2}-[\d]{4})")
 
-def get_age(name):
+def _get_age(name):
     age = re_age.search(name)
     if age is not None:
         P_age = age.groups()[0][1:]
@@ -40,7 +40,7 @@ def get_age(name):
         day_age = np.nan
     return day_age
 
-def mk_datetime(sdate:str):
+def _mk_datetime(sdate:str):
     """Convert a string in form of "yyyy.mm.dd" to a datetime.
 
     Parameters
@@ -67,9 +67,9 @@ The original coding dictionary holds information about the animal ID,
     the abr directory, the tone, and click file names, maybe the cells that are good, etc.
     
 """
-basepath = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Tessa/NF107Ai32')
+Basepath = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Tessa/NF107Ai32')
     
-coding_NF107_nihl = {
+Coding = {
         "Animal1": Mouse_Info(ID="Animal1", ExposeDate="2018.06.01", ABRDate="2018.06.15", 
         RecordDate="2018.06.19", DOB="2018.03.31", Group="A", Sex="M", Strain="NF107Ai32",
         SPL=109, ExposeAge=52, Book=2, Page=25,
@@ -257,7 +257,7 @@ pbm 8/10/2022.
         ABRClickFiles=["20190102-0914"], ABRToneFiles=["20190102-0923"],
         Cells="", Quality="ok"), 
 
-     "BNE8": Mouse_Info(ID="BNE8", ExposeDate="2019.12.20", RecordDate="2019.01.09",
+    "BNE8": Mouse_Info(ID="BNE8", ExposeDate="2019.12.20", RecordDate="2019.01.09",
         ABRDate="2019.01.02", Group="AA", DOB="2018.11.13", CageCard=2862336, Sex="M", Strain="NF107Ai32",
         SPL=103.8, Book=2, Page=67, # Book 2 page 71 Correction to output
         ABRPath="01-02-2019_ABR_P50_BNE8_NF107Ai32",
@@ -326,6 +326,13 @@ pbm 8/10/2022.
 #     "BNE7?": Mouse_Info(ID="BNE7?", RecordDate="2019.01.30",
 #         Group="A", ABRClickFiles=["2018."], Cells="", Quality="ok"), #  [ "BNE7", "A", "ok",],  # ???? Animal #BNE17/18/20 (need verification from Tessa) No discernable marks on mouse ears/toes.
 
+    "BNE18": Mouse_Info(ID="BNE18", ExposeDate="2019.01.09", RecordDate="2019.01.09",
+        ABRDate="2019.01.24", Group="B", DOB="2018.12.03", CageCard=0, Sex="M", Strain="NF107Ai32",
+        SPL=96.5, Book=2, Page=72,  # 13.5 dB Attn
+        ABRPath="01-24-2019_ABR_P50_BNE18_NF107Ai32",
+        ABRClickFiles=["20190124-1043"], ABRToneFiles=["20190124-1054",],
+        Cells="", Quality="ok",
+        ), 
     # "BNE18": Mouse_Info(ID="BNE18", ExposeDate="RecordDate="2019.02.01",
     #     ABRDate"2019.01.24",
     #     SPL=96.5, Book=2, Page=72,  # 13.5 dB Attn
@@ -438,6 +445,19 @@ P94: 6/17/19 : BNE ? NF107 ABR males, exposed 6/3/19.
 
 
 """
+def find_clickrun(run_name):
+    # find this run in the coding file and return the subject data (MouseInfo dataclass) that matches
+    for subject in list(Coding.keys()):
+        if run_name in Coding[subject].ABRClickFiles:
+            return Coding[subject]
+    return None
+
+def find_tonerun(run_name):
+    # find this run in the coding file and return the subject data (MouseInfo dataclass) that matches
+    for subject in list(Coding.keys()):
+        if run_name in Coding[subject].ABRToneFiles:
+            return Coding[subject]
+    return None
 
 def verify():
     """verify the data set is somewhat complete
@@ -446,40 +466,40 @@ def verify():
         ValueError: if a required field is missing
     """    
 
-    for subject in list(coding_NF107_nihl.keys()):
-        topdir = coding_NF107_nihl[subject].ABRPath 
+    for subject in list(Coding.keys()):
+        topdir = Coding[subject].ABRPath 
         if topdir == "":
             continue
         # print("basepath: ", basepath)
         # print("topdir: ", topdir)
         # abrp = Path(basepath, topdir)
-        # for cf in coding_NF107_nihl[subject].ABRClickFiles:
+        # for cf in Coding[subject].ABRClickFiles:
         #     print(list(Path(abrp).glob(f"{cf:s}*.txt")))
         #     PA.do_clicks()
-        # for cf in coding_NF107_nihl[subject].ABRToneFiles:
+        # for cf in Coding[subject].ABRToneFiles:
         #     print(list(Path(abrp).glob(f"{cf:s}*.txt")))
         try:
-            dob = mk_datetime(coding_NF107_nihl[subject].DOB)
+            dob = _mk_datetime(Coding[subject].DOB)
         except: 
             print(f"DOB not set for subject - {subject:s}")
             raise ValueError()
         try:
-            d_exp = mk_datetime(coding_NF107_nihl[subject].ExposeDate)
+            d_exp = _mk_datetime(Coding[subject].ExposeDate)
         except:
             print(f"Exposure date not set for subject - {subject:s}")
             raise ValueError()
         try:
-            d_abr = mk_datetime(coding_NF107_nihl[subject].ABRDate)
+            d_abr = _mk_datetime(Coding[subject].ABRDate)
         except:
             print(f"ABR Recording date not set for subject - {subject:s}")
             raise ValueError()
         try:
-            d_rec = mk_datetime(coding_NF107_nihl[subject].RecordDate)
+            d_rec = _mk_datetime(Coding[subject].RecordDate)
         except:
             print(f"Recording date not set for subject - {subject:s}")
             raise ValueError()
 
-        md = get_age(topdir)
+        md = _get_age(topdir)
         print(f"Subject: {subject:<12s}")
         print(f"   Exposure age: {(d_exp-dob).days:4d}  ABR age: {(d_abr-dob).days:4d}  Age at recording: {(d_rec-dob).days:4d}  Time since exposure: {(d_rec-d_exp).days:4d}")
         if (d_abr-dob).days == md:
@@ -491,7 +511,7 @@ def verify():
         import src.plotABRs as pABR
         from ABR_Datasets import ABR_Datasets 
         dsname = "somename"
-        P = pABR.ABR(Path(topdir, [coding_NF107_nihl[subject].ABRPath]), "clicks", info=ABR_Datasets[dsname], datasetname = dsname)
+        P = pABR.ABR(Path(topdir, [Coding[subject].ABRPath]), "clicks", info=ABR_Datasets[dsname], datasetname = dsname)
     
 
 
