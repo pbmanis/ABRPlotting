@@ -45,10 +45,11 @@ class Mouse_Info:
 
 @dataclass
 class ABR_Data:
-    directory: str="" #the path to the data
+    directory: Union[str, Path] = None # the path to the data
+    datadirectory: Union[str, Path] = None
     invert: bool=False # if True, the polarity will be flipped
     clickselect: list = field(default_factory=defemptylist) #a list indicating the times of the useful protocol runs for the clicks
-                # if not defined, then all runs that are found are used.
+                # if empty, then all runs that are found are used.
                 # if runs need to be combined, then include them together (see toneselect in the NrCAMKO dataset)
     markers: dict = field(default_factory=defemptydict)
     toneselect: list = field(default_factory=defemptylist) #a list of the tone protocol runs (see clickselect for format)

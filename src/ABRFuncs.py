@@ -21,7 +21,9 @@ class ABRFuncs:
         Return all the spl files in the directory. There is one spl file
         per intensity run.
         """
+        # print("abrf: getSPLs: ", datapath)
         spl_files = list(Path(datapath).glob("*-SPL.txt"))
+        # print("splfiles: ", spl_files)
         rundict = {}
         for spl_run in spl_files:
             with open(spl_run, "r") as fh:

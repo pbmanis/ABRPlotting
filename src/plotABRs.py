@@ -1,6 +1,7 @@
 """PlotABRs
 
-Plot ABR data from our matlab program. This relies on ABR_Datasets.py to specify
+Plot ABR data from our matlab program. This relies on an excel file
+to specify
 experiments. The directory for each subject is also expected to be named in a
 way that identifies the subject and experimental group(s). This allows us to
 make plots that correctly assign each subject with markers and labels. 
@@ -12,6 +13,7 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 from typing import List, Tuple, Union
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -23,14 +25,33 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
 
+from src.ABR_dataclasses import ABR_Data
 import abr_analyzer
 import ABR_dataclasses as ABRDC
 import ABRFuncs
 import getcomputer  # stub to return the computer and base directory
+import pylibrary.tools.cprint as CP
 
 basedir, computer_name = getcomputer.getcomputer()
 
 ABRF = ABRFuncs.ABRFuncs()
+
+@dataclass
+class plotinfo:
+    """A data class to hold information about the plots (to be passed around)
+    """
+    P: object = None
+    Plot_f: object = None
+    Plot_f2: object = None
+    Plot_f4: object = None
+    IOax: object = None
+    m: int = 0
+    n: int = 0
+    icol: int = 0
+    nrows: int = 1
+    ncols: int = 1
+    axarr: object=None
+    axarr2: object = None
 
 
 class PData(object):
@@ -50,6 +71,7 @@ class ABR:
         mode: str = "clicks",
         info: object = ABRDC.ABR_Data(),
         datasetname: str = "",
+        datadirectory: str="",
     ):
         """
         Parameters
@@ -90,6 +112,9 @@ class ABR:
         else:
             self.show_dots = True
 
+        self.df_excel = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
+        self.df_excel = self.df_excel[self.df_excel.DataSet == datasetname]
+
         self.dev = 3.0  # should put this in the table
         self.hpf = 500.0
         self.lpf = 2500.0  # filter frequencies, Hz
@@ -106,6 +131,8 @@ class ABR:
 
         self.datapath = Path(datapath)
         self.datasetname = datasetname
+
+        self.datadirectory = datadirectory # this is the name of the directory that the data is in, not the full path
         self.term = info.term
         self.minlat = info.minlat
         self.invert = (
@@ -123,6 +150,7 @@ class ABR:
                 print("Imported Codefile: ", CodeFile)
         else:
             CodeFile = None
+        print("Codefile: ", CodeFile)
         self.characterizeDataset(CodeFile)
 
         # build color map where each SPL is a color (cycles over 12 levels)
@@ -165,7 +193,9 @@ class ABR:
 
         # x = ABRF.get_matlab()
         self.spls = ABRF.getSPLs(self.datapath)
+
         self.freqs = ABRF.getFreqs(self.datapath)
+        # print("self.spls: ", self.spls, self.datapath)
         # A click run will consist of an SPL, n and p file, but NO additional files.
         self.clicks = {}
         for s in self.spls.keys():
@@ -191,6 +221,7 @@ class ABR:
 
         self.clickmaps = {}
 
+        # print("click keys: ", self.clicks.keys())
         for i, s in enumerate(list(self.clicks.keys())):
             self.clickmaps[s] = {
                 "stimtype": "click",
@@ -198,18 +229,19 @@ class ABR:
                 "mouseinfo": None,
             }
             if self.mode == "clicks":
-                if i == 0:
-                    print("\n  Click Intensity Runs: ")
-                print(f"    Run: {s:s}")
-                mouseinfo = codefile.find_clickrun(s)
-                if mouseinfo is not None:
-                    self.clickmaps[s]["mouseinfo"] = mouseinfo
-                    print(
-                        "        ",
-                        self.clickmaps[s],
-                        "Mouse ID: ",
-                        self.clickmaps[s]["mouseinfo"].ID,
-                    )
+                # if i == 0:
+                #     print("\n  Click Intensity Runs: ")
+                # print(f"    Run: {s:s}")
+                if codefile is not None:
+                    mouseinfo = codefile.find_clickrun(s)
+                    if mouseinfo is not None:
+                        self.clickmaps[s]["mouseinfo"] = mouseinfo
+                        print(
+                            "        ",
+                            self.clickmaps[s],
+                            "Mouse ID: ",
+                            self.clickmaps[s]["mouseinfo"].ID,
+                        )
                 else:
                     print("        ", self.clickmaps[s], "NO Mouse ID: ")
 
@@ -236,10 +268,10 @@ class ABR:
         for i, s in enumerate(select):
             if s is None:
                 continue
-            if isinstance(s, int):
-                select[i] = "%04d" % s  # convert to string
-            if isinstance(s, str) and len(s) < 4:  # make sure size is ok
-                select[i] = "%04d" % int(s)
+            # if isinstance(s, int):
+            #     select[i] = "%04d" % s  # convert to string
+            # if isinstance(s, str) and len(s) < 4:  # make sure size is ok
+            #     select[i] = "%04d" % int(s)
             if tone:
                 base = list(self.tonemaps.keys())[0][:9]
                 for f in self.tonemaps[base + select[i]]["Freqs"]:
@@ -247,7 +279,7 @@ class ABR:
                         freqs.append(f)
         return select, freqs
 
-    def getClickData(self, select: str = "", directory: str = ""):
+    def getClickData(self, select: str = "", directory: Union[Path, str] = None):
         """
         Gets the click data for the current selection The resulting data is held
         in a dictionary structured as {mapidentity: dict of {waves, time, spls
@@ -266,12 +298,12 @@ class ABR:
         markerstyle, group = ABRF.getMarkerStyle(
             directory=directory, markers=self.info.markers
         )
-
+        print("click maps: ", self.clickmaps.keys())
         for i, s in enumerate(self.clickmaps.keys()):
             if select is not None:
                 if s[9:] not in select:
                     continue
-
+            print("working it")
             waves, tb = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
             if waves is None:
                 print(f"Malformed data set for run {s:s}. Continuing")
@@ -287,7 +319,8 @@ class ABR:
                 "group": group,
                 "mouseinfo": self.clickmaps[s]["mouseinfo"],
             }
-
+            # print("Populated clickdata: ", self.clickdata[s])
+        
     def getToneData(self, select, directory: str = ""):
         """
         Gets the tone map data for the current selection The resulting data is
@@ -338,17 +371,19 @@ class ABR:
 
     def plotClicks(
         self,
-        select=None,
+        select:str=None,
+        datadir:Union[Path, str]=None,
         plottarget=None,
         IOplot=None,
         PSDplot=None,
         superIOPlot=None,
-        colorindex=0,
+        colorindex:int=0,
         show_y_label:bool=True,  # for the many-paneled plots
         show_x_label:bool=True,
     ) -> List:
         """
-        Plot the click ABR intensity series, one column per subject, for one subject
+        Plot the click ABR intensity series for for one subject
+        one column per subject, 
 
         Parameters
         ----------
@@ -374,12 +409,19 @@ class ABR:
             Mabplotlib Axes for the IO plot
 
         """
-        # get data for clicks and plot all on one plot
+        # grab the excel data row.
+        drow = self.df_excel[self.df_excel.DataDirectory == self.datadirectory]
+        if drow.Sex.values[0] == 'M':
+            sex_marker = 'x'
+        elif drow.Sex.values[0] == 'F':
+            sex_marker = 'o'
+        else:
+            sex_marker = 'D'
         A = abr_analyzer.Analyzer(sample_frequency=self.sample_freq)
         thrs = {}
         icol = colorindex
         IO_DF = []  # build a dataframe of the IO funcitons from a list.
-
+        print("PLOT CLICKS: ", self.clickdata.keys())
         for index, s in enumerate(list(self.clickdata.keys())):
             # datatitle = datatitle.replace('_', '\_')  # if TeX is enabled, will need to escape the underscores
             if self.clickdata[s]["mouseinfo"] is not None:
@@ -405,6 +447,7 @@ class ABR:
                 Path("ABR_CSVs", f"{str(self.datapath.parts[-1]):s}" + ".csv")
             )
             A.analyze(t, waves, dev=self.dev)
+            print("A.thresholds: ", A.thresholds)
             pnp = A.p1n1p2
             p1 = pnp["p1"]
             n1 = pnp["n1"]
@@ -542,10 +585,11 @@ class ABR:
                 # else:
                 #     label = s
                 self.superIOLabels.append(label)
+
                 superIOPlot.plot(
                     spls,
                     sf_cvt * A.ppio,
-                    marker=self.clickdata[s]["marker"],
+                    marker=sex_marker, # self.clickdata[s]["marker"],
                     linestyle="-",
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label=label,
@@ -611,7 +655,7 @@ class ABR:
                 IOplot.plot(
                     spls,
                     sf_cvt * A.ppio,
-                    marker=A.ppioMarker,
+                    marker=sex_marker, #A.ppioMarker,
                     markersize=3,
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label="P-P",
@@ -620,7 +664,7 @@ class ABR:
                 IOplot.plot(
                     spls,
                     sf_cvt * np.sqrt(A.rms_response**2 - A.rms_baseline**2),
-                    marker=A.rmsMarker,
+                    marker=sex_marker, # A.rmsMarker,
                     markersize=3,
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label="RMS signal",
@@ -674,10 +718,10 @@ class ABR:
             if show_y_label:
                 superIOPlot.set_ylabel(f"ABR ($\mu V$)")
 
-        print("")
+        print("-"*40)
         for s in list(thrs.keys()):
             print(f"dataset: {s:s}  thr={thrs[s]:.0f}")
-        print("")
+        print("-"*40)
         self.thrs = thrs
         return IO_DF
 
@@ -774,7 +818,6 @@ class ABR:
         re_genotype_KO = re.compile(r"(?P<GT>_KO)")
         # put data in pd dataframe
         T = []
-        # print('allthrs: ', allthrs)
         # parse information about mouse, experiment, etc.
         for i, d in enumerate(allthrs):
             for m in allthrs[d]:
@@ -1075,8 +1118,8 @@ class ABR:
                     self.datapath, "click", fnamepos, fnameneg, lineterm
                 )
             except:
-                print(datasetname)
-                print(dataset)
+                print("Failed on datasetname: ", datasetname)
+                print(" with dataset: ", dataset)
                 raise ValueError()
             return waves, tb
         if dataset["stimtype"] == "tonepip":
@@ -1122,7 +1165,7 @@ class ABR:
             return None, None
         if not Path(datapath, fnameneg).is_file():
             return None, None
-        print("Reading from: ", datapath, fnamepos)
+        print("Reading from: ", str(Path(datapath, fnamepos)))
         if datatype == "click":
             spllist = self.clickmaps[fnamepos[:13]]["SPLs"]
         else:
@@ -1168,32 +1211,8 @@ class ABR:
 
         return waves, tb
 
-
-def do_clicks(
-    dsname: str,
-    top_directory: Union[str, Path],
-    dirs: list,
-    ABR_Datasets: object = None,
-):
-    """analyze the click data
-
-    Parameters
-    ----------
-    dsname : str
-        The dataset name, from the info dict ('dir') in ABR_Datasets
-    top_directory : str
-        the name of the directory where the data is stored
-    dirs : list
-        A list of the subdirectories under the top directory.
-        This routine will look in each subdirectory for
-        click data.
-    """
-    if ABR_Datasets[dsname].clickselect != []:
-        clicksel = ABR_Datasets[dsname].clickselect
-    else:
-        clicksel = [None] * len(dirs)
-
-    m, n = PH.getLayoutDimensions(len(clicksel))
+def build_click_plot(nplots=1):
+    m, n = PH.getLayoutDimensions(nplots)
     # print("Grid: ", m, n)
     # print("dirs: ", dirs)
 
@@ -1206,7 +1225,7 @@ def do_clicks(
     horizontalspacing = 0.08
     if n > 5:
         horizontalspacing = 0.08 / (n / 5.0)
- 
+    print("Plot array and count: ", m, n, nplots)
 
     # generate plot grid for waveforms
     Plot_f = PH.regular_grid(
@@ -1217,12 +1236,14 @@ def do_clicks(
         verticalspacing=0.04,
         horizontalspacing=0.04,
     )
+    if Plot_f.axarr.ndim > 1:
+        axarr = Plot_f.axarr.ravel()
+    else:
+        axarr = Plot_f.axarr
+
     for ax in Plot_f.axarr:
         PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
-        if Plot_f.axarr.ndim > 1:
-            axarr = Plot_f.axarr.ravel()
-        else:
-            axarr = Plot_f.axarr
+
 
     # generate plot grid for individual IO functions
     Plot_f2 = PH.regular_grid(
@@ -1260,65 +1281,102 @@ def do_clicks(
     IOax = Plot_f4.axarr.ravel()
     for ax in Plot_f4.axarr:
         PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
+    PlotInfo = plotinfo(m=m, n=n, icol = 0,
+        Plot_f=Plot_f, Plot_f2=Plot_f2, Plot_f4=Plot_f4,
+        IOax=IOax,
+        axarr=axarr, axarr2=axarr2)
+    return PlotInfo
 
+
+def populate_plot(P, select, datadir, plot_info:object, plot_index:int, icol:int):
+    xlab = False
+    ylab = False
+    if plot_info.nrows == plot_info.m-1:
+        xlab = True
+    if plot_info.ncols == 0:
+        ylab = True
+    IOdata = P.plotClicks(
+        select=select,
+        datadir=datadir,
+        plottarget=plot_info.axarr[plot_index],
+        superIOPlot=plot_info.IOax[0],
+        IOplot=plot_info.axarr2[plot_index],
+        colorindex=icol,
+        show_x_label = xlab,
+        show_y_label = ylab,
+    )
+
+    return IOdata
+    
+def do_clicks(
+    dsname: str,
+    top_directory: Union[str, Path],
+    dirs: list,
+    ABR_Datasets: object = None,
+    plot_info: object = None,
+    nplots: int = 1,
+    plot_index: int=0,
+):
+    """analyze the click data
+
+    Parameters
+    ----------
+    dsname : str
+        The dataset name, from the info dict ('dir') in ABR_Datasets
+        This is the name of the directory that holds the session ABR data
+    top_directory : str
+        The full path to the dsname directory.
+    dirs : list
+        A list of the subdirectories under the top directory.
+        This routine will look in each subdirectory for
+        click data.
+    """
+
+    clicksel = ABR_Datasets[dsname].clickselect
+    if len(dirs) == 0:
+        CP.cprint("r", f"No Directories found: {str(dsname):s}, {str(top_directory):s}")
+        return plot_info
+    if plot_info is None:
+        plot_info = build_click_plot(nplots)
     # do analysis and plot, and accumulate thresholds while doing so.
     nsel = len(clicksel)
     allthrs = {}
     IO_DF = []
-    # dates = [s.name for s in dirs]
-    # dt = []
-    # for d in dates:
-    #     s = d.split('_')
-    #     s = s[0].split('-')
-    #     dt.append(datetime.date(int(s[2]), int(s[0]), int(s[1])))
-    # dts = pd.Series(dt).sort_values(ascending=True)
 
-    # list_order = dts.index.tolist()
-
+    print("do_clicks: ", dirs)
     for icol, k in enumerate(range(len(dirs))):  # list_order):
-        nrow = k // m
-        ncol = k % n
-
-
         P = ABR(
-            Path(top_directory, dirs[k]),
+            Path(top_directory),
             "clicks",
             info=ABR_Datasets[dsname],
             datasetname=dsname,
+            datadirectory=ABR_Datasets[dsname].datadirectory,
         )
+        CP.cprint("r", P.df_excel[P.df_excel.DataDirectory == ABR_Datasets[dsname].datadirectory].Sex.values)
+
         if icol == 0:
             P.summaryClick_color_map = ABRF.makeColorMap(nsel, list(range(nsel)))
+        print("doClicks: Getting Click data with : ", clicksel[k], dirs[k], dsname)
         P.getClickData(select=clicksel[k], directory=dirs[k])
-        xlab = False
-        ylab = False
-        if nrow == m-1:
-            xlab = True
-        if ncol == 0:
-            ylab = True
-        IOdata = P.plotClicks(
-            select=clicksel[k],
-            plottarget=axarr[icol],
-            superIOPlot=IOax[0],
-            IOplot=axarr2[icol],
-            colorindex=icol,
-            show_x_label = xlab,
-            show_y_label = ylab,
-        )
-        dirname = str(Path(dirs[k].name))
+        IOdata = populate_plot(P, clicksel[k], datadir=dsname, plot_info=plot_info, plot_index=plot_index, icol=icol)
+        print("P: ", P.thrs)
+        dirname = str(Path(dirs[k]).name)
         allthrs[dirname] = P.thrs
         IO_DF.extend(IOdata)
+        plot_info.icol = icol
 
+    
     clickIODF = pd.DataFrame(IO_DF, columns=["subject", "run", "spl", "ppio", "group"])
     clickIODF["group_cat"] = clickIODF["group"].astype("category")
     fill_circ = MarkerStyle("o", fillstyle="full")
     fill_square = MarkerStyle("s", fillstyle="full")
-    if IOax[0] is not None:
+    if plot_info.IOax[0] is not None:
         sns.lineplot(
             x="spl",
             y="ppio",
             hue="group_cat",  # style="group_cat",
             data=clickIODF,
-            ax=IOax[0],
+            ax=plot_info.IOax[0],
             hue_order=["WT", "KO"],
             markers=False,  # [fill_circ, fill_square],
             err_style="band",
@@ -1339,23 +1397,12 @@ def do_clicks(
     #     if clickIODF.at['group'] == 'WT':
     #         clickIOWT['subject']
 
-    IOax[0].legend(loc="upper left", fontsize=7)
+    plot_info.IOax[0].legend(loc="upper left", fontsize=7)
     population_thrdata = P.plotClickThresholds(
-        allthrs, name="Click Thresholds", ax=IOax[1]
+        allthrs, name="Click Thresholds", ax=plot_info.IOax[1]
     )
+    return plot_info
 
-    mpl.figure(Plot_f.figure_handle)
-    fofilename = Path(top_directory, "ClickSummary.pdf")
-    mpl.savefig(fofilename)
-
-    mpl.figure(Plot_f2.figure_handle)
-    fo2filename = Path(top_directory, "ClickIOSummary.pdf")
-    mpl.savefig(fo2filename)
-
-    mpl.figure("Click IO Overlay")
-    fo4filename = Path(top_directory, "ClickIOOverlay.pdf")
-    mpl.savefig(fo4filename)
-    mpl.show()
 
 
 def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
@@ -1365,8 +1412,9 @@ def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
     ----------
     dsname : str
         The dataset name, from the info dict ('dir') in ABR_Datasets
+        This is the name of the directory that holds the session ABR data
     top_directory : str
-        the name of the directory where the data is stored
+        The full path to the dsname directory.
     dirs : list
         A list of the subdirectories under the top directory.
         This routine will look in each subdirectory for
@@ -1403,7 +1451,7 @@ def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
     mpl.show()
 
 
-def main():
+def analyze_from_ABR_Datasets_main():
     if len(sys.argv) > 1:
         dsname = sys.argv[1]
         mode = sys.argv[2]
@@ -1442,8 +1490,80 @@ def main():
     else:
         raise ValueError(f"Mode is not known: {mode:s}")
 
+def get_dirs(row, datatype="click", plot_info=None, nplots:int=1, plot_index:int = 0):
+    """get the data set directories for this row that have the data type
+
+    Args:
+        row (_type_): _description_
+        datatype (str, optional): _description_. Defaults to "click".
+
+    Returns:
+        _type_: _description_
+    """
+    assert datatype in ["click", "tones"]
+    if pd.isnull(row.Runs):
+        return [], plot_info
+    d = row.Runs.strip().split(',')
+    dirs = []
+    clickdirs = []
+    tonedirs = []
+    for r in d:
+        rs = r.split(':')
+        if rs[0].strip() == datatype:
+            dirs.append(rs[1])
+    if datatype == 'click':
+        clickdirs = dirs
+    if datatype == 'tones':
+        tonedirs = dirs
+
+    ABR_Datasets = {
+        row.DataSet: ABR_Data(
+            directory = Path(row.BasePath, row.DataSet),
+            datadirectory = row.DataDirectory,
+            invert = True,
+            clickselect = clickdirs,
+            toneselect = tonedirs,
+            term = "\r",
+            minlat = 2.2,
+        ),}
+    plot_info = do_clicks(row.DataSet, Path(row.BasePath, row.DataSet, row.DataDirectory), dirs, ABR_Datasets,
+        plot_info = plot_info, nplots=nplots, plot_index=plot_index)
+    return dirs, plot_info
+
+def from_excel(dsets = ["Tessa_CBA_NoiseExposed"], agerange=(20, 150)):
+    df  = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
+    for dset in dsets:  # for each of the datasets, analyze
+        plot_info = None
+        dfn = df[df.DataSet==dset]  # subset into the full dataset
+        dfn = dfn.sort_values(['Age', 'Sex'])
+        dfn = dfn[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
+        dfn = dfn.reset_index()  # do this LAST
+        # print(dfn.Age, dfn.Sex)
+        # exit()
+        nplots = int(np.max(dfn.index))
+        CP.cprint('c', f"Nplots: {nplots:d}")
+        for plot_index in range(nplots):
+            dirs, plot_info = get_dirs(row=dfn.iloc[plot_index], datatype="click",
+                 plot_info=plot_info, nplots=nplots, plot_index=plot_index)
+       # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
+        # dfn.apply(get_dirs,  args=("tones",), axis=1)
+
+        if plot_info is not None:
+            top_directory = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/', dset)
+            mpl.figure(plot_info.Plot_f.figure_handle)
+            fofilename = Path(top_directory, "ClickWaveSummary.pdf")
+            mpl.savefig(fofilename)
+
+            mpl.figure(plot_info.Plot_f2.figure_handle)
+            fo2filename = Path(top_directory, "ClickIOSummary.pdf")
+            mpl.savefig(fo2filename)
+
+            mpl.figure("Click IO Overlay")
+            fo4filename = Path(top_directory, "ClickIOOverlay.pdf")
+            mpl.savefig(fo4filename)
+            mpl.show()
 
 if __name__ == "__main__":
     # 
     # main()
-    
+    from_excel()

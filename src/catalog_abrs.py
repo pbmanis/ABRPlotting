@@ -1,12 +1,27 @@
-import pandas as pd
-import numpy as np
+import datetime
+import re
+from dataclasses import dataclass
 from pathlib import Path
-from collections import Counter
+
+import numpy as np
+import pandas as pd
 
 toppath = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data")
 
+@dataclass
+class metadata:
+    date: str = None
+    strain: str = None
+    age: str = None
+    sex: str = None
+    animal_identifier: str = None
+    genotype: str = None
+    cross: str = None
+
+
 """Try to find all the duplicated ABR datasets
 """
+
 
 
 
@@ -73,26 +88,119 @@ def get_runs(f):
         prots += f"tone:{p:s}, "
     return prots
 
-    
+def parse_date(text, f):
+    refile = None
+    ds = re.split("[-/ ]", text)
+    if len(ds[0]) == 1:
+        ds[0] = f"{int(ds[0]):02d}" # make sure it has leading 0
+        refile = ds # adjust file name so that this is true!
+        text = '-'.join(ds)
+    for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%d/%m/%Y', "%Y%m%d", "%m-%d-%Y", "%m-%d-%y"):
+        try:
+            return datetime.datetime.strptime(text, fmt), refile
+        except ValueError:
+                pass
+    try:
+        # print("Use File Date", f)
+        # make a datetime from the file timestamp
+        ctime = datetime.datetime.fromtimestamp(Path(f).stat().st_ctime)
+        text = datetime.datetime.strftime(ctime, "%Y-%m-%d")
+        return(ctime, refile)
+    except:
+        print("Cannot match date time for directory: ", text, f)
+        pass
+    raise ValueError(f'no valid date format found for: {text:s}, {str(f):s}')
+
+def get_metadata(dirname, filepath=None):
+    """Given the directory name, try to parse it to fill out some
+    metadata fields for the table. 
+    Different users used different fields for the names, so we have a lot to parse
+    Typical:
+    10-04-2019_ABR_P63_F2_CNTNAP2KO
+    from this we get the date, the age, the sex and animal # for the day, and the genotype.
+    Separators might be spaces or underscores (most commonly), or dashes (less common)
+
+    Args:
+        f (Path or str): directory name to parse
+    """
+    md = metadata()
+
+    fstr = re.split("[_ ]+", str(dirname))
+    datestr = fstr[0]
+    ts, refile = parse_date(datestr, filepath)
+    md.date = datetime.datetime.strftime(ts, "%Y.%m.%d")
+    # look for age
+    r_age = re.compile("^P[0-9]{1,3}", re.IGNORECASE)
+    r_sex = re.compile("^[MF]{1}[0-9]*$", re.IGNORECASE)
+    r_id = re.compile("^[a-z]{1,3}[0-9]{1,3}$", re.IGNORECASE) # two letters followed by 1 or 2 numbers is usually the ID
+    strains = ['VGAT', 'CBA', 'FVB', 'UBE3A', 'NCAM', 'NrCAM', 'NF107', 
+        'DDY', 'NF107Ai32', 'DBA', 'BK2' 'Math1cre', 
+        'CNTNAP2', 'GP43Thy1', 'B2S']
+    genotypes = ['KO', 'WT', 'Homo', 'Het', 'FF']
+    for i, fs in enumerate(fstr):
+        m = r_age.match(fs)
+        if m is not None:
+            md.age = int(m[0].lower().strip("p"))
+            continue
+        s = r_sex.match(fs)
+        if s is not None:
+            md.sex = s[0][0].upper()
+            continue
+        a = r_id.match(fs)
+        if a is not None:
+            md.animal_identifier = a[0].upper()
+            continue
+        for s in strains:
+            if fs.startswith(s) and len(fs) == len(s):
+                md.strain = s
+            elif fs.startswith(s):
+                md.strain = s
+                gt = fs[len(s):]
+                print("gt: ", s, gt, filepath)
+                if gt in genotypes:
+                    md.genotype = gt
+                else:
+                    md.cross = gt # not a genotype, probably a cross.
+                break
+        if md.genotype is not None:
+            for g in genotypes:
+                if fs == g:
+                    md.genotype = g
+                    break
+
+        # print(md, dirname)
+
+    return md
 
 def highlight_by_name(row):
     colors = {"Ruili": "#c5d7a5", #"darkseagreen",
+            "Ruilis ABRs": "yellow",
+            "Ruili ABR data": "yellow",
+            "Yong's ABRs": "linen",
+            "Reggie_E": "thistle",
+
+            "Tessa_BNE": "lavender",
+            "Tessa_CBA": "turquoise",
+            "Tessa_FVB": "slategrey",
+            "Tessa_CBA_NoiseExposed": "turquoise",
+            "Tessa_CNTNAP2": "skyblue",
             "Tessa_CNTNAP2_Het": "skyblue",
             "Tessa_CNTNAP2_Het_GP4.3": "skyblue",
             "Tessa_CNTNAP2_KO": "skyblue",
             "Tessa_CNTNAP2_WT": "skyblue",
-            "Tessa_Coate-NrCAM-ABRs_KO": "skyblue",
-            "Tessa_Coate-NrCAM-ABRs_WT": "skyblue",
-            "Tessa_Myo10": "skyblue",
-            "Tessa_NCAM": "skyblue",
-            "Tessa_NCAM_GP4.3_ABR": "skyblue",
-            "Tessa_GP4.3-Thy1-NoiseExposed": "skyblue",
-            "Tessa_GP4.3-Thy1-Normal": "skyblue",
+            "Tessa_Coate-NrCAM-ABRs_KO": "aqua",
+            "Tessa_Coate-NrCAM-ABRs_WT": "aqua",
+            "Tessa_Myo10": "powderblue",
+            "Tessa_NCAM": "steelblue",
+            "Tessa_NCAM_GP4.3_ABR": "steelblue",
+            "Tessa_GP4.3-Thy1-NoiseExposed": "lightsteelblue",
+            "Tessa_GP4.3-Thy1-Normal": "lightsteelblue",
+            "Tessa_NF107": "aliceblue",
+            "Tessa_NF107Ai32": "aliceblue",
+            "Tessa_VGAT": "lightcyan",
+            "Tessa_VGATNIHL": "lightcyan",
+
             "Xuying": "lightpink",
-            "Yong's ABRs": "linen",
-            "Ruilis ABRs": "yellow",
-            "Ruili ABR data": "yellow",
-            "Reggie_E": "thistle",
             "Kasten ABR data": "sienna",
             "JUN's ABRs": "saddlebrown",
             "heather abrs": "blue",
@@ -104,8 +212,8 @@ def highlight_by_name(row):
             "ABRstransfer": "mediumorchid",
             "Transgenic-ABRs": "cyan",
     }
-    if row.UserName in colors.keys():
-        return [f"background-color: {colors[row.UserName]:s}" for s in range(len(row))]
+    if row.DataSet in colors.keys():
+        return [f"background-color: {colors[row.DataSet]:s}" for s in range(len(row))]
     else:
         return [f"background-color: white" for s in range(len(row))]
         
@@ -179,7 +287,10 @@ def make_excel_catalog():
             runs = get_runs(f)
         else:
             runs = np.nan
-        abr_f.append({"UserName": fp[5], "DataDirectory": subdir, "Runs": runs, "BasePath": str(Path(*fp[:4]))})
+        mdata = get_metadata(dirname=subdir, filepath=f) # get some metadata from the subdir name: multiple parses... 
+        abr_f.append({"DataSet": fp[5], "Date": mdata.date, "Age": mdata.age, "Strain": mdata.strain, "Sex": mdata.sex,
+            "animal identifier": mdata.animal_identifier, "genotype": mdata.genotype, "cross": mdata.cross,
+            "DataDirectory": subdir, "Runs": runs, "BasePath": str(Path(*fp[:5]))})
     df = pd.DataFrame(abr_f)
     print(df.head())
     print(df.index)

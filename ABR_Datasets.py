@@ -30,7 +30,6 @@ Each entry in the nested dictionary is structured as follows:
 'nameselect': if a dataset directory has more than one type of data, this helps to filter it.
 "codefile = the name of a python file that has additional information about the animal codes 
     (IDs, etc.). 
-
 """
 from src.ABR_dataclasses import ABR_Data
 
