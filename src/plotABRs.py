@@ -1335,7 +1335,7 @@ def do_clicks(
     clicksel = ABR_Datasets[dsname].clickselect
     if len(dirs) == 0:
         CP.cprint("r", f"No Directories found: {str(dsname):s}, {str(top_directory):s}")
-        return plot_info
+        return plot_info, None
     if plot_info is None:
         plot_info = build_click_plot(nplots)
     # do analysis and plot, and accumulate thresholds while doing so.
@@ -1401,7 +1401,7 @@ def do_clicks(
     population_thrdata = P.plotClickThresholds(
         allthrs, name="Click Thresholds", ax=plot_info.IOax[1]
     )
-    return plot_info
+    return plot_info, clickIODF
 
 
 
@@ -1483,7 +1483,7 @@ def analyze_from_ABR_Datasets_main():
     ]
 
     if mode == "clicks":
-        do_clicks(dsname, top_directory, dirs, ABR_Datasets)
+        plot_info, IO_DF = do_clicks(dsname, top_directory, dirs, ABR_Datasets)
 
     elif mode == "tones":
         do_tones(dsname, top_directory, dirs, ABR_Datasets)
@@ -1502,7 +1502,7 @@ def get_dirs(row, datatype="click", plot_info=None, nplots:int=1, plot_index:int
     """
     assert datatype in ["click", "tones"]
     if pd.isnull(row.Runs):
-        return [], plot_info
+        return [], plot_info, None
     d = row.Runs.strip().split(',')
     dirs = []
     clickdirs = []
@@ -1526,13 +1526,14 @@ def get_dirs(row, datatype="click", plot_info=None, nplots:int=1, plot_index:int
             term = "\r",
             minlat = 2.2,
         ),}
-    plot_info = do_clicks(row.DataSet, Path(row.BasePath, row.DataSet, row.DataDirectory), dirs, ABR_Datasets,
+    plot_info, IO_DF = do_clicks(row.DataSet, Path(row.BasePath, row.DataSet, row.DataDirectory), dirs, ABR_Datasets,
         plot_info = plot_info, nplots=nplots, plot_index=plot_index)
-    return dirs, plot_info
+    return dirs, plot_info, IO_DF
 
-def from_excel(dsets = ["Tessa_CBA_NoiseExposed"], agerange=(20, 150)):
+def from_excel(dsets = ['Tessa_NF107'], agerange=(20, 150)):
     df  = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
     for dset in dsets:  # for each of the datasets, analyze
+        dfion = []
         plot_info = None
         dfn = df[df.DataSet==dset]  # subset into the full dataset
         dfn = dfn.sort_values(['Age', 'Sex'])
@@ -1543,11 +1544,27 @@ def from_excel(dsets = ["Tessa_CBA_NoiseExposed"], agerange=(20, 150)):
         nplots = int(np.max(dfn.index))
         CP.cprint('c', f"Nplots: {nplots:d}")
         for plot_index in range(nplots):
-            dirs, plot_info = get_dirs(row=dfn.iloc[plot_index], datatype="click",
+            dirs, plot_info, IO_DF = get_dirs(row=dfn.iloc[plot_index], datatype="click",
                  plot_info=plot_info, nplots=nplots, plot_index=plot_index)
+            # add data to df_io
+            if IO_DF is None:
+                continue
+            spls = IO_DF.spl.values.tolist()
+            # spls = np.fromstring(re.sub("[\[\]]", "", spls.replace("  ", ", ")), sep=" ")
+            ppio = IO_DF.ppio.values.tolist()
+            # print(IO_DF.ppio.values)
+            # exit()
+            # ppio = np.fromstring(re.sub("[\[\]]", "", ppio.replace("  ", ", ")), sep=" ")
+            d = dfn.iloc[plot_index]
+            dfion.append({'dataset': dsets, 'run': d.DataDirectory,
+                    'genotype': d.genotype, "Age": d.Age, "Sex": d.Sex,
+                    'spls': spls, 'ppio': ppio})
+
        # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
         # dfn.apply(get_dirs,  args=("tones",), axis=1)
-
+        top_directory = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/', dset)
+        df_io = pd.DataFrame(dfion)
+        df_io.to_excel(Path(top_directory, f"ClickIO_{dset:s}.xlsx"))
         if plot_info is not None:
             top_directory = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/', dset)
             mpl.figure(plot_info.Plot_f.figure_handle)
@@ -1563,7 +1580,34 @@ def from_excel(dsets = ["Tessa_CBA_NoiseExposed"], agerange=(20, 150)):
             mpl.savefig(fo4filename)
             mpl.show()
 
+def io_from_excel(dsets = ['Tessa_CBA', 'Tessa_FVB', 'Tessa_NF107Ai32', 'Tessa_NF107']):
+    import ast
+    df0  = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
+    top_path = df0.iloc[0].BasePath
+    f, ax = mpl.subplots(1,1)
+    colors = ['k', 'r', 'b', 'c']
+    markers = ['s', 'o', '^', 'D']
+    mfill = {'M': 'full', 'F': None}
+    agerange = (30, 70)
+    for k, dset in enumerate(dsets):
+        print("dset: ", dset, k)
+        df = pd.read_excel(Path(top_path, dset, f"ClickIO_{dset:s}.xlsx"))
+        df = df[(df.Age >= agerange[0]) & (df.Age <= agerange[1])].reset_index()
+        for i in range(max(df.index)):
+            # print(df.iloc[i].run)
+            spls = df.iloc[i].spls
+            spls = ast.literal_eval(spls) 
+            ppio = df.iloc[i].ppio
+            ppio = ast.literal_eval(ppio)
+            sex = df.iloc[i].Sex
+            print(sex, markers[k], mfill[sex], colors[k])
+            ax.plot(spls, ppio, color=colors[k], marker=markers[k], fillstyle=mfill[sex], linestyle = '-')
+        df = None
+    mpl.show()
+
+
 if __name__ == "__main__":
     # 
     # main()
-    from_excel()
+    #from_excel()
+    io_from_excel()
