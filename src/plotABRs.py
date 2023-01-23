@@ -7,39 +7,45 @@ way that identifies the subject and experimental group(s). This allows us to
 make plots that correctly assign each subject with markers and labels. 
 
 """
+import ast
 import importlib
 import re
 import sys
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple, Union
-from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 import pylibrary.plotting.plothelpers as PH
+import pylibrary.tools.cprint as CP
 import seaborn as sns  # makes plot background light grey with grid, no splines. Remove for publication plots
-from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
 from matplotlib import pyplot as mpl
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.lines import Line2D
 from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
 
-from src.ABR_dataclasses import ABR_Data
 import abr_analyzer
 import ABR_dataclasses as ABRDC
 import ABRFuncs
 import getcomputer  # stub to return the computer and base directory
-import pylibrary.tools.cprint as CP
+from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
+from src.ABR_dataclasses import ABR_Data
+from statsmodels.formula.api import ols
+import statsmodels.api as sm
+import statsmodels
 
 basedir, computer_name = getcomputer.getcomputer()
 
 ABRF = ABRFuncs.ABRFuncs()
 
+
 @dataclass
 class plotinfo:
-    """A data class to hold information about the plots (to be passed around)
-    """
+    """A data class to hold information about the plots (to be passed around)"""
+
     P: object = None
     Plot_f: object = None
     Plot_f2: object = None
@@ -50,7 +56,7 @@ class plotinfo:
     icol: int = 0
     nrows: int = 1
     ncols: int = 1
-    axarr: object=None
+    axarr: object = None
     axarr2: object = None
 
 
@@ -71,7 +77,7 @@ class ABR:
         mode: str = "clicks",
         info: object = ABRDC.ABR_Data(),
         datasetname: str = "",
-        datadirectory: str="",
+        datadirectory: str = "",
     ):
         """
         Parameters
@@ -132,7 +138,7 @@ class ABR:
         self.datapath = Path(datapath)
         self.datasetname = datasetname
 
-        self.datadirectory = datadirectory # this is the name of the directory that the data is in, not the full path
+        self.datadirectory = datadirectory  # this is the name of the directory that the data is in, not the full path
         self.term = info.term
         self.minlat = info.minlat
         self.invert = (
@@ -150,7 +156,7 @@ class ABR:
                 print("Imported Codefile: ", CodeFile)
         else:
             CodeFile = None
-        print("Codefile: ", CodeFile)
+        # print("Codefile: ", CodeFile)
         self.characterizeDataset(CodeFile)
 
         # build color map where each SPL is a color (cycles over 12 levels)
@@ -236,12 +242,12 @@ class ABR:
                     mouseinfo = codefile.find_clickrun(s)
                     if mouseinfo is not None:
                         self.clickmaps[s]["mouseinfo"] = mouseinfo
-                        print(
-                            "        ",
-                            self.clickmaps[s],
-                            "Mouse ID: ",
-                            self.clickmaps[s]["mouseinfo"].ID,
-                        )
+                        # print(
+                        #     "        ",
+                        #     self.clickmaps[s],
+                        #     "Mouse ID: ",
+                        #     self.clickmaps[s]["mouseinfo"].ID,
+                        # )
                 else:
                     print("        ", self.clickmaps[s], "NO Mouse ID: ")
 
@@ -320,7 +326,7 @@ class ABR:
                 "mouseinfo": self.clickmaps[s]["mouseinfo"],
             }
             # print("Populated clickdata: ", self.clickdata[s])
-        
+
     def getToneData(self, select, directory: str = ""):
         """
         Gets the tone map data for the current selection The resulting data is
@@ -371,19 +377,19 @@ class ABR:
 
     def plotClicks(
         self,
-        select:str=None,
-        datadir:Union[Path, str]=None,
+        select: str = None,
+        datadir: Union[Path, str] = None,
         plottarget=None,
         IOplot=None,
         PSDplot=None,
         superIOPlot=None,
-        colorindex:int=0,
-        show_y_label:bool=True,  # for the many-paneled plots
-        show_x_label:bool=True,
+        colorindex: int = 0,
+        show_y_label: bool = True,  # for the many-paneled plots
+        show_x_label: bool = True,
     ) -> List:
         """
         Plot the click ABR intensity series for for one subject
-        one column per subject, 
+        one column per subject,
 
         Parameters
         ----------
@@ -411,12 +417,12 @@ class ABR:
         """
         # grab the excel data row.
         drow = self.df_excel[self.df_excel.DataDirectory == self.datadirectory]
-        if drow.Sex.values[0] == 'M':
-            sex_marker = 'x'
-        elif drow.Sex.values[0] == 'F':
-            sex_marker = 'o'
+        if drow.Sex.values[0] == "M":
+            sex_marker = "x"
+        elif drow.Sex.values[0] == "F":
+            sex_marker = "o"
         else:
-            sex_marker = 'D'
+            sex_marker = "D"
         A = abr_analyzer.Analyzer(sample_frequency=self.sample_freq)
         thrs = {}
         icol = colorindex
@@ -554,16 +560,19 @@ class ABR:
                 plottarget.set_xlabel("T (ms)")
             plottarget.set_xlim(0, 10.0)
             plottarget.set_ylim(10.0, 115.0)
-            PH.set_axes_ticks(plottarget,
-                    xticks = [0, 2, 4, 6, 8, 10],
-                    xticks_str = ["0", "2", "4", "6", "8", "10"],
-                    x_minor=np.arange(0, 10, 0.5),
-                    yticks = [0, 40,  80, 120],
-                    yticks_str = ["0", "40", "80", "120"],
-                    y_minor = [10, 20, 30, 50, 60, 70, 90, 100, 110],
-                )
+            PH.set_axes_ticks(
+                plottarget,
+                xticks=[0, 2, 4, 6, 8, 10],
+                xticks_str=["0", "2", "4", "6", "8", "10"],
+                x_minor=np.arange(0, 10, 0.5),
+                yticks=[0, 40, 80, 120],
+                yticks_str=["0", "40", "80", "120"],
+                y_minor=[10, 20, 30, 50, 60, 70, 90, 100, 110],
+            )
             plottarget.set_title(
-                datatitle, x=0.5, y=1.00,
+                datatitle,
+                x=0.5,
+                y=1.00,
                 fontdict={"fontsize": 6, "ha": "center", "va": "bottom"},
                 transform=plottarget.transAxes,
             )
@@ -589,7 +598,7 @@ class ABR:
                 superIOPlot.plot(
                     spls,
                     sf_cvt * A.ppio,
-                    marker=sex_marker, # self.clickdata[s]["marker"],
+                    marker=sex_marker,  # self.clickdata[s]["marker"],
                     linestyle="-",
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label=label,
@@ -602,16 +611,13 @@ class ABR:
                     run = 0
                     subjectID = datatitle
                 for i_level, spl in enumerate(spls):
-                    # print(A.ppio[i_level])
-                    # print(spl)
-                    # print(self.clickdata[s]["group"])
-                    # print(datatitle)
                     IO_DF.append(
                         [
                             subjectID,
                             run,
                             spl,
                             sf_cvt * A.ppio[i_level],
+                            thrs[s],
                             self.clickdata[s]["group"],
                         ]
                     )
@@ -629,17 +635,19 @@ class ABR:
             if IOplot is not None:  # generic io plot for cell
                 IOplot.set_title(
                     datatitle,
-                    x=0.5, y=1.0,
+                    x=0.5,
+                    y=1.0,
                     fontdict={"fontsize": 7, "ha": "center", "va": "bottom"},
                     transform=IOplot.transAxes,
                 )  # directory plus file
                 PH.nice_plot(IOplot, position=-0.03, direction="outward", ticklength=3)
-                PH.set_axes_ticks(IOplot,
-                    xticks = [0, 25, 50, 75, 100],
-                    xticks_str = ["0", "25", "50", "75", "100"],
-                    yticks = range(0, 7),
-                    yticks_str = [f"{y:d}" for y in range(0, 7)],
-                    y_minor = 0.5 + np.arange(0, 6),
+                PH.set_axes_ticks(
+                    IOplot,
+                    xticks=[0, 25, 50, 75, 100],
+                    xticks_str=["0", "25", "50", "75", "100"],
+                    yticks=range(0, 7),
+                    yticks_str=[f"{y:d}" for y in range(0, 7)],
+                    y_minor=0.5 + np.arange(0, 6),
                 )
 
                 IOplot.plot(
@@ -655,7 +663,7 @@ class ABR:
                 IOplot.plot(
                     spls,
                     sf_cvt * A.ppio,
-                    marker=sex_marker, #A.ppioMarker,
+                    marker=sex_marker,  # A.ppioMarker,
                     markersize=3,
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label="P-P",
@@ -664,7 +672,7 @@ class ABR:
                 IOplot.plot(
                     spls,
                     sf_cvt * np.sqrt(A.rms_response**2 - A.rms_baseline**2),
-                    marker=sex_marker, # A.rmsMarker,
+                    marker=sex_marker,  # A.rmsMarker,
                     markersize=3,
                     color=self.summaryClick_color_map[icol % self.max_colors],
                     label="RMS signal",
@@ -703,13 +711,14 @@ class ABR:
                 PSDplot.set_xlim(100.0, 2000.0)
 
         if superIOPlot is not None:
-            PH.set_axes_ticks(superIOPlot,
-                    xticks = [0, 25, 50, 75, 100],
-                    xticks_str = ["0", "25", "50","75", "100"],
-                    yticks = range(0, 7),
-                    yticks_str = [f"{y:d}" for y in range(0, 7)],
-                    y_minor = 0.5 + np.arange(0, 6),
-                )
+            PH.set_axes_ticks(
+                superIOPlot,
+                xticks=[0, 25, 50, 75, 100],
+                xticks_str=["0", "25", "50", "75", "100"],
+                yticks=range(0, 7),
+                yticks_str=[f"{y:d}" for y in range(0, 7)],
+                y_minor=0.5 + np.arange(0, 6),
+            )
             legend = superIOPlot.legend(loc="upper left")
             for label in legend.get_texts():
                 label.set_fontsize(5)
@@ -718,10 +727,10 @@ class ABR:
             if show_y_label:
                 superIOPlot.set_ylabel(f"ABR ($\mu V$)")
 
-        print("-"*40)
+        print("-" * 40)
         for s in list(thrs.keys()):
             print(f"dataset: {s:s}  thr={thrs[s]:.0f}")
-        print("-"*40)
+        print("-" * 40)
         self.thrs = thrs
         return IO_DF
 
@@ -970,7 +979,7 @@ class ABR:
 
         PH.nice_plot(ax, position=-0.05, direction="outward", ticklength=4)
         n_datasets = len(list(allthrs.keys()))
-        print("# of Datasets found to measure tone thresholds: ", n_datasets)
+        # print("# of Datasets found to measure tone thresholds: ", n_datasets)
         c_map = ABRF.makeColorMap(n_datasets, list(allthrs.keys()))
 
         df = self.get_dataframe_clicks(allthrs)
@@ -1211,6 +1220,11 @@ class ABR:
 
         return waves, tb
 
+
+###
+###======================================================================================
+###
+
 def build_click_plot(nplots=1):
     m, n = PH.getLayoutDimensions(nplots)
     # print("Grid: ", m, n)
@@ -1243,7 +1257,6 @@ def build_click_plot(nplots=1):
 
     for ax in Plot_f.axarr:
         PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
-
 
     # generate plot grid for individual IO functions
     Plot_f2 = PH.regular_grid(
@@ -1281,17 +1294,24 @@ def build_click_plot(nplots=1):
     IOax = Plot_f4.axarr.ravel()
     for ax in Plot_f4.axarr:
         PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
-    PlotInfo = plotinfo(m=m, n=n, icol = 0,
-        Plot_f=Plot_f, Plot_f2=Plot_f2, Plot_f4=Plot_f4,
+    PlotInfo = plotinfo(
+        m=m,
+        n=n,
+        icol=0,
+        Plot_f=Plot_f,
+        Plot_f2=Plot_f2,
+        Plot_f4=Plot_f4,
         IOax=IOax,
-        axarr=axarr, axarr2=axarr2)
+        axarr=axarr,
+        axarr2=axarr2,
+    )
     return PlotInfo
 
 
-def populate_plot(P, select, datadir, plot_info:object, plot_index:int, icol:int):
+def populate_plot(P, select, datadir, plot_info: object, plot_index: int, icol: int):
     xlab = False
     ylab = False
-    if plot_info.nrows == plot_info.m-1:
+    if plot_info.nrows == plot_info.m - 1:
         xlab = True
     if plot_info.ncols == 0:
         ylab = True
@@ -1302,12 +1322,13 @@ def populate_plot(P, select, datadir, plot_info:object, plot_index:int, icol:int
         superIOPlot=plot_info.IOax[0],
         IOplot=plot_info.axarr2[plot_index],
         colorindex=icol,
-        show_x_label = xlab,
-        show_y_label = ylab,
+        show_x_label=xlab,
+        show_y_label=ylab,
     )
 
     return IOdata
-    
+
+
 def do_clicks(
     dsname: str,
     top_directory: Union[str, Path],
@@ -1315,7 +1336,7 @@ def do_clicks(
     ABR_Datasets: object = None,
     plot_info: object = None,
     nplots: int = 1,
-    plot_index: int=0,
+    plot_index: int = 0,
 ):
     """analyze the click data
 
@@ -1352,21 +1373,32 @@ def do_clicks(
             datasetname=dsname,
             datadirectory=ABR_Datasets[dsname].datadirectory,
         )
-        CP.cprint("r", P.df_excel[P.df_excel.DataDirectory == ABR_Datasets[dsname].datadirectory].Sex.values)
+        CP.cprint(
+            "r",
+            P.df_excel[
+                P.df_excel.DataDirectory == ABR_Datasets[dsname].datadirectory
+            ].Sex.values,
+        )
 
         if icol == 0:
             P.summaryClick_color_map = ABRF.makeColorMap(nsel, list(range(nsel)))
         print("doClicks: Getting Click data with : ", clicksel[k], dirs[k], dsname)
         P.getClickData(select=clicksel[k], directory=dirs[k])
-        IOdata = populate_plot(P, clicksel[k], datadir=dsname, plot_info=plot_info, plot_index=plot_index, icol=icol)
-        print("P: ", P.thrs)
+        IOdata = populate_plot(
+            P,
+            clicksel[k],
+            datadir=dsname,
+            plot_info=plot_info,
+            plot_index=plot_index,
+            icol=icol,
+        )
+        print("Threshold: ", P.thrs)
         dirname = str(Path(dirs[k]).name)
         allthrs[dirname] = P.thrs
         IO_DF.extend(IOdata)
         plot_info.icol = icol
 
-    
-    clickIODF = pd.DataFrame(IO_DF, columns=["subject", "run", "spl", "ppio", "group"])
+    clickIODF = pd.DataFrame(IO_DF, columns=["subject", "run", "spl", "ppio", "thrs", "group"])
     clickIODF["group_cat"] = clickIODF["group"].astype("category")
     fill_circ = MarkerStyle("o", fillstyle="full")
     fill_square = MarkerStyle("s", fillstyle="full")
@@ -1380,7 +1412,7 @@ def do_clicks(
             hue_order=["WT", "KO"],
             markers=False,  # [fill_circ, fill_square],
             err_style="band",
-            ci="sd",
+            errorbar="sd",
             err_kws={"alpha": 0.8, "linewidth": 0.75},
             mew=1.0,
             linewidth=1.5,
@@ -1402,7 +1434,6 @@ def do_clicks(
         allthrs, name="Click Thresholds", ax=plot_info.IOax[1]
     )
     return plot_info, clickIODF
-
 
 
 def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
@@ -1490,7 +1521,10 @@ def analyze_from_ABR_Datasets_main():
     else:
         raise ValueError(f"Mode is not known: {mode:s}")
 
-def get_dirs(row, datatype="click", plot_info=None, nplots:int=1, plot_index:int = 0):
+
+def get_dirs(
+    row, datatype="click", plot_info=None, nplots: int = 1, plot_index: int = 0
+):
     """get the data set directories for this row that have the data type
 
     Args:
@@ -1503,70 +1537,99 @@ def get_dirs(row, datatype="click", plot_info=None, nplots:int=1, plot_index:int
     assert datatype in ["click", "tones"]
     if pd.isnull(row.Runs):
         return [], plot_info, None
-    d = row.Runs.strip().split(',')
+    d = row.Runs.strip().split(",")
     dirs = []
     clickdirs = []
     tonedirs = []
     for r in d:
-        rs = r.split(':')
+        rs = r.split(":")
         if rs[0].strip() == datatype:
             dirs.append(rs[1])
-    if datatype == 'click':
+    if datatype == "click":
         clickdirs = dirs
-    if datatype == 'tones':
+    if datatype == "tones":
         tonedirs = dirs
 
     ABR_Datasets = {
         row.DataSet: ABR_Data(
-            directory = Path(row.BasePath, row.DataSet),
-            datadirectory = row.DataDirectory,
-            invert = True,
-            clickselect = clickdirs,
-            toneselect = tonedirs,
-            term = "\r",
-            minlat = 2.2,
-        ),}
-    plot_info, IO_DF = do_clicks(row.DataSet, Path(row.BasePath, row.DataSet, row.DataDirectory), dirs, ABR_Datasets,
-        plot_info = plot_info, nplots=nplots, plot_index=plot_index)
+            directory=Path(row.BasePath, row.DataSet),
+            datadirectory=row.DataDirectory,
+            invert=True,
+            clickselect=clickdirs,
+            toneselect=tonedirs,
+            term="\r",
+            minlat=2.2,
+        ),
+    }
+    plot_info, IO_DF = do_clicks(
+        row.DataSet,
+        Path(row.BasePath, row.DataSet, row.DataDirectory),
+        dirs,
+        ABR_Datasets,
+        plot_info=plot_info,
+        nplots=nplots,
+        plot_index=plot_index,
+    )
     return dirs, plot_info, IO_DF
 
-def from_excel(dsets = ['Tessa_NF107'], agerange=(20, 150)):
-    df  = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
-    for dset in dsets:  # for each of the datasets, analyze
+
+def analyze_from_excel(
+    datasets=["Tessa_NF107"], agerange=(20, 150)
+):
+    df = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
+    for dset in datasets:  # for each of the datasets, analyze
         dfion = []
         plot_info = None
-        dfn = df[df.DataSet==dset]  # subset into the full dataset
-        dfn = dfn.sort_values(['Age', 'Sex'])
+        dfn = df[df.DataSet == dset]  # subset into the full dataset
+        dfn = dfn.sort_values(["Age", "Sex"])
         dfn = dfn[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
         dfn = dfn.reset_index()  # do this LAST
-        # print(dfn.Age, dfn.Sex)
-        # exit()
+
         nplots = int(np.max(dfn.index))
-        CP.cprint('c', f"Nplots: {nplots:d}")
+        CP.cprint("c", f"Nplots: {nplots:d}")
         for plot_index in range(nplots):
-            dirs, plot_info, IO_DF = get_dirs(row=dfn.iloc[plot_index], datatype="click",
-                 plot_info=plot_info, nplots=nplots, plot_index=plot_index)
+            dirs, plot_info, IO_DF = get_dirs(
+                row=dfn.iloc[plot_index],
+                datatype="click",
+                plot_info=plot_info,
+                nplots=nplots,
+                plot_index=plot_index,
+            )
             # add data to df_io
             if IO_DF is None:
                 continue
             spls = IO_DF.spl.values.tolist()
-            # spls = np.fromstring(re.sub("[\[\]]", "", spls.replace("  ", ", ")), sep=" ")
             ppio = IO_DF.ppio.values.tolist()
-            # print(IO_DF.ppio.values)
-            # exit()
-            # ppio = np.fromstring(re.sub("[\[\]]", "", ppio.replace("  ", ", ")), sep=" ")
+            thr = float(list(set(IO_DF.thrs))[0])
             d = dfn.iloc[plot_index]
-            dfion.append({'dataset': dsets, 'run': d.DataDirectory,
-                    'genotype': d.genotype, "Age": d.Age, "Sex": d.Sex,
-                    'spls': spls, 'ppio': ppio})
 
-       # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
+            dfion.append(
+                {
+                    "dataset": dset,
+                    "date": d.Date,
+                    "run": d.DataDirectory,
+                    "genotype": d.genotype,
+                    "strain": d.Strain,
+                    "cross": d.cross,
+                    "treatment": d.treatment,
+                    "animal identifier": d["animal identifier"],
+                    "Age": d.Age,
+                    "Sex": d.Sex,
+                    "spls": spls,
+                    "ppio": ppio,
+                    "threshold": thr,
+                }
+            )
+
+
+        # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
         # dfn.apply(get_dirs,  args=("tones",), axis=1)
-        top_directory = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/', dset)
+        top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", dset)
         df_io = pd.DataFrame(dfion)
+
         df_io.to_excel(Path(top_directory, f"ClickIO_{dset:s}.xlsx"))
         if plot_info is not None:
-            top_directory = Path('/Volumes/Pegasus_002/ManisLab_Data3/abr_data/', dset)
+            top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", dset)
             mpl.figure(plot_info.Plot_f.figure_handle)
             fofilename = Path(top_directory, "ClickWaveSummary.pdf")
             mpl.savefig(fofilename)
@@ -1578,36 +1641,153 @@ def from_excel(dsets = ['Tessa_NF107'], agerange=(20, 150)):
             mpl.figure("Click IO Overlay")
             fo4filename = Path(top_directory, "ClickIOOverlay.pdf")
             mpl.savefig(fo4filename)
-            mpl.show()
+    mpl.show()
 
-def io_from_excel(dsets = ['Tessa_CBA', 'Tessa_FVB', 'Tessa_NF107Ai32', 'Tessa_NF107']):
-    import ast
-    df0  = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
+def _average(row):
+    """Average repeated measures in an IO function:
+    If there are multiple recordings at one SPL (for clicks), those are
+    averaged together.
+
+    This would be called using pandas dataframe .apply
+
+    Args:
+        row (Pandas series): a data row
+
+    Returns:
+        Pandas series: data row
+    """
+    spls = ast.literal_eval(row.spls)
+    ppio = ast.literal_eval(row.ppio)
+    spl_new = np.unique(spls)
+    # Use bincount to get the accumulated summation for each unique x, and 
+    # divide each summation by the respective count of each unique value in x
+    ppio_mean = np.bincount(spls, weights=ppio)/np.bincount(spls)
+    ppio_mean = [p for p in ppio_mean if not pd.isnull(p)]  # bincount works on bin width of 1... 
+    row.spls = spl_new.tolist()
+    row.ppio = ppio_mean
+    return row
+
+
+def _row_convert(row):
+    # print(row)
+    row.spls = ast.literal_eval(row.spls)
+    row.ppio = ast.literal_eval(row.ppio)
+    return row
+
+def reorganize_abr_data(Groups:list, abrdata:object):
+    """Reorganize datasets in abrdata into long form
+    """
+    # print(abrdata.columns)
+    abr_df = pd.DataFrame(["Group", "Subject", "sex", "spls", 'ppio'])
+    abrdict = {"Group": [], "Subject": [], "sex": [], "spls": [], 'ppio': []}
+    # print(abrdata.head())
+    for g in Groups:
+        df = abrdata[abrdata.dataset == g].reset_index()
+        for iloc in df.index:
+            spls = df.iloc[iloc].spls
+            if not isinstance(spls, list):
+                spls = ast.literal_eval(spls)
+            ppio = df.iloc[iloc].ppio
+            if not isinstance(ppio, list):
+                ppio = ast.literal_eval(ppio)
+            for i, spl in enumerate(spls):
+                abrdict["spls"].append(spls[i])
+                abrdict["ppio"].append(ppio[i])
+                abrdict["Group"].append(g)
+                abrdict["Subject"].append(df.iloc[iloc].run)
+                abrdict["sex"].append(df.iloc[iloc].Sex)
+
+    abr_df = pd.DataFrame(abrdict)
+    return abr_df
+
+
+def compute_io_stats(ppfd: object, Groups: list):
+    from statsmodels.stats.anova import AnovaRM
+
+#perform the repeated measures ANOVA
+    print(AnovaRM(data=ppfd, depvar='ppio', subject='Subject', within=['Group'], aggregate_func='mean').fit())
+    return
+    model = ols(f"ppio ~ Group*spls", ppfd).fit()
+    table = sm.stats.anova_lm(model, typ=2)  # Type 2 ANOVA DataFrame
+    p = "=" * 80 + "\n"
+    p += str(table) + "\n"
+    p += str(model.nobs) + "\n"
+    p += str(model.summary())
+    print(p)
+
+
+def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 70)):
+
+    df0 = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
+
+    df_code = pd.read_excel("/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_NIHL/NF107Ai32_NoiseExposure_Code.xlsx")
+    df_code = df_code[df_code.Group == 'B']
+    animal_ids = list(df_code.ID.values)
+    # print(len(animal_ids), animal_ids)
+
     top_path = df0.iloc[0].BasePath
-    f, ax = mpl.subplots(1,1)
-    colors = ['k', 'r', 'b', 'c']
-    markers = ['s', 'o', '^', 'D']
-    mfill = {'M': 'full', 'F': None}
-    agerange = (30, 70)
-    for k, dset in enumerate(dsets):
-        print("dset: ", dset, k)
+    f, ax = mpl.subplots(1, 2, figsize=(8, 5))
+    colors = ["k", "r", "b", "c"]
+    markers = ["s", "o", "^", "D"]
+    mfill = {"M": "full", "F": None}
+
+    grand_df = pd.DataFrame()
+    for k, dset in enumerate(datasets):
+        print("dset: ", dset)
         df = pd.read_excel(Path(top_path, dset, f"ClickIO_{dset:s}.xlsx"))
-        df = df[(df.Age >= agerange[0]) & (df.Age <= agerange[1])].reset_index()
-        for i in range(max(df.index)):
-            # print(df.iloc[i].run)
-            spls = df.iloc[i].spls
-            spls = ast.literal_eval(spls) 
-            ppio = df.iloc[i].ppio
-            ppio = ast.literal_eval(ppio)
-            sex = df.iloc[i].Sex
-            print(sex, markers[k], mfill[sex], colors[k])
-            ax.plot(spls, ppio, color=colors[k], marker=markers[k], fillstyle=mfill[sex], linestyle = '-')
-        df = None
+        # some data selection - by age, some data from a dset, treatment
+        df = df[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
+        # df = df[df.strain != 'FVB']
+        if dset == 'Tessa_BNE':  # just get the control animals from the noise exposure group
+            df = df[df['animal identifier'].isin(animal_ids)]
+        df = df.loc[df.treatment.isin([None, "UnExposed", np.nan])].reset_index()
+        df = df.apply(_average, axis=1)
+        grand_df = pd.concat((grand_df, df))
+       
+    p_df = reorganize_abr_data(Groups=datasets, abrdata=grand_df)
+    p_df.to_csv("reorganized_data.csv")
+    sns.lineplot(data=p_df, x="spls", y="ppio", hue='Group',  estimator=np.mean, errorbar="sd", ax=ax[0], linewidth=2.0, palette="colorblind")
+    sns.lineplot(data=p_df, x="spls", y="ppio", hue='Group', units='Subject', estimator=None, ax=ax[0], linewidth=0.3, alpha=0.5, palette="colorblind")
+        # ax.plot(spls, ppio, color=colors[k], marker=markers[k], fillstyle=mfill[sex], linestyle = '-')
+    df = grand_df
+    PH.nice_plot(ax[0], position=-0.03, direction="outward", ticklength=3)
+    PH.referenceline(ax[0], 0.0)
+    ax[0].set_ylabel(f"N1-P1 ($\mu V$)")
+    ax[0].set_xlabel("Click (dB SPL)")
+    ax[0].set_xlim(20., 90.)
+
+    labels = {}
+    d_cba = df[df.dataset == "Tessa_CBA"]
+    n_cba = len(set(d_cba.run.values))
+    labels['CBA'] = f"CBA (N={n_cba:d})"
+    d_fvb = df[df.dataset == "Tessa_FVB"]
+    n_fvb = len(set(d_fvb.run.values))
+    labels['FVB'] = f"FVB (N={n_fvb:d})"
+    d_bne = df[df.dataset == "Tessa_BNE"]
+    n_bne = len(set(d_bne.run.values))
+    labels['NF107::Ai32'] = f"NF107::Ai32 (N={n_bne:d})"
+    d_nf107 = df[df.dataset== "Tessa_NF107"]
+    colors = sns.color_palette("colorblind")
+    # print(colors)
+    custom_legend = [Line2D([0], [0], marker=None, color=colors[2], lw=2, label=labels['NF107::Ai32']),
+                     Line2D([0], [0], marker=None, color=colors[0], lw=2, label=labels['FVB']),
+                     Line2D([0], [0], marker=None, color=colors[1], lw=2, label=labels['CBA']),
+            ]
+    ax[0].legend(handles=custom_legend, handlelength=1, loc="upper left", fontsize=11, labelspacing=0.33, markerscale=0.5)
+
+    sns.boxplot(data=grand_df, x="dataset", y="threshold", palette="colorblind", ax=ax[1])
+
+    print(f"N CBA: {n_cba:d}   FVB: {n_fvb:d}  BNE: {n_bne:d}, NF107Ai32: {n_bne:d}")
+
+    print(grand_df.columns)
+    print("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
+    # some stats... 
+    # compute_io_stats(p_df, Groups= datasets)
     mpl.show()
 
 
 if __name__ == "__main__":
-    # 
+    #
     # main()
-    #from_excel()
-    io_from_excel()
+    # analyze_from_excel(datasets=['Tessa_FVB', 'Tessa_CBA', 'Tessa_BNE'])
+    plot_io_from_excel(datasets = ['Tessa_FVB', 'Tessa_CBA', 'Tessa_BNE'])

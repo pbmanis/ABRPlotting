@@ -15,6 +15,7 @@ class metadata:
     age: str = None
     sex: str = None
     animal_identifier: str = None
+    treatment: str = None
     genotype: str = None
     cross: str = None
 
@@ -124,7 +125,20 @@ def get_metadata(dirname, filepath=None):
         f (Path or str): directory name to parse
     """
     md = metadata()
-
+    # before splitting string on underscores and spaces, change some designators
+    # used by some personnel to a standard format
+    dirname = dirname.lower()
+    dirname = dirname[:8] + dirname[8:].replace('-', '_') # replace hyphens but only after date portion of name
+    dirname = dirname.replace("vgatexposed", "vgat_exposed")
+    dirname = dirname.replace("vgat", "vgat_wt")
+    dirname = dirname.replace("cntnap2homo", "cntnap2_homo")
+    dirname = dirname.replace("cntnap2ko", "cntnap2_ko")
+    dirname = dirname.replace("cntnap2wt", "cntnap2_wt")
+    dirname = dirname.replace("cntnap2kohomo", "cntnap2_ko_homo")
+    dirname = dirname.replace("ai32exposed", "ai32_exposed")
+    dirname = dirname.replace("noise exposed", "noiseexposed")
+    dirname = dirname.replace("noise_exposed", "noiseexposed")
+    dirname = dirname.replace("sham_exposed", "shamexposed")
     fstr = re.split("[_ ]+", str(dirname))
     datestr = fstr[0]
     ts, refile = parse_date(datestr, filepath)
@@ -133,11 +147,16 @@ def get_metadata(dirname, filepath=None):
     r_age = re.compile("^P[0-9]{1,3}", re.IGNORECASE)
     r_sex = re.compile("^[MF]{1}[0-9]*$", re.IGNORECASE)
     r_id = re.compile("^[a-z]{1,3}[0-9]{1,3}$", re.IGNORECASE) # two letters followed by 1 or 2 numbers is usually the ID
-    strains = ['VGAT', 'CBA', 'FVB', 'UBE3A', 'NCAM', 'NrCAM', 'NF107', 
-        'DDY', 'NF107Ai32', 'DBA', 'BK2' 'Math1cre', 
+    r_exposure = re.compile(r"(?P<dur>[0-9]{1})?(?P<week>wk{0,1})?(?P<un>un{0,1}|noise{0,1}|sham{0,1})?(?P<exp>Exposed{1}|exposed{1}|exposure{1}|control{1})", re.IGNORECASE)
+    strains = ['VGAT', 'CBA', 'FVB', 'UBE3A', 'NCAM', 'NrCAM','NF107Ai32', 'NF107', 
+        'DDY',  'DBA', 'BK2' 'Math1cre', 'Ai32',
         'CNTNAP2', 'GP43Thy1', 'B2S']
+    strains = [s.lower() for s in strains]
     genotypes = ['KO', 'WT', 'Homo', 'Het', 'FF']
+    genotypes = [g.lower() for g in genotypes]
     for i, fs in enumerate(fstr):
+        fs = fs.strip()
+        print("checking fs: ", fs)
         m = r_age.match(fs)
         if m is not None:
             md.age = int(m[0].lower().strip("p"))
@@ -150,22 +169,46 @@ def get_metadata(dirname, filepath=None):
         if a is not None:
             md.animal_identifier = a[0].upper()
             continue
+        exp = r_exposure.match(fs)
+        if exp is not None:
+            mg = exp.groups()
+            # print(exp.group('exp'))
+            treat = None
+            if exp.group('exp') is not None:
+                if exp.group('un') is not None:
+                    if exp.group('un') == 'noise':
+                        treat = "NoiseExposed"
+                    elif exp.group('un') in ['un', 'sham']:
+                        treat = "UnExposed"
+                else: # descriptor was not included, so key on the actual exposure key:
+                    if exp.group('exp') == 'control':
+                        treat = "UnExposed"
+                    elif exp.group('exp').startswith("expos"):
+                        treat = "NoiseExposure"
+                    else:
+                        raise ValueError(f"Noise exposure key not recognized: {exp.group('exp'):s}")
+            else:
+                if exp.group('wk') is not None or exp.group('dur') is not None or exp.group('exp') is not None:
+                    raise ValueError(f"Unable to parse potential exposure string: {fs:s}")
+
+            md.treatment = treat
+
         for s in strains:
             if fs.startswith(s) and len(fs) == len(s):
-                md.strain = s
+                md.strain = s.upper()
             elif fs.startswith(s):
-                md.strain = s
+                md.strain = s.upper()
                 gt = fs[len(s):]
                 print("gt: ", s, gt, filepath)
                 if gt in genotypes:
-                    md.genotype = gt
+                    md.genotype = gt.upper()
                 else:
-                    md.cross = gt # not a genotype, probably a cross.
+                    md.cross = gt.upper() # not a genotype, probably a cross.
                 break
         if md.genotype is not None:
             for g in genotypes:
                 if fs == g:
-                    md.genotype = g
+                    md.genotype = g.upper()
                     break
 
         # print(md, dirname)
@@ -289,7 +332,7 @@ def make_excel_catalog():
             runs = np.nan
         mdata = get_metadata(dirname=subdir, filepath=f) # get some metadata from the subdir name: multiple parses... 
         abr_f.append({"DataSet": fp[5], "Date": mdata.date, "Age": mdata.age, "Strain": mdata.strain, "Sex": mdata.sex,
-            "animal identifier": mdata.animal_identifier, "genotype": mdata.genotype, "cross": mdata.cross,
+            "animal identifier": mdata.animal_identifier, "treatment": mdata.treatment,"genotype": mdata.genotype, "cross": mdata.cross,
             "DataDirectory": subdir, "Runs": runs, "BasePath": str(Path(*fp[:5]))})
     df = pd.DataFrame(abr_f)
     print(df.head())
