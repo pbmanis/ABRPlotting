@@ -46,7 +46,7 @@ class Mouse_Info:
 @dataclass
 class ABR_Data:
     directory: Union[str, Path] = None # the path to the data
-    datadirectory: Union[str, Path] = None
+    subject: Union[str, Path] = None  # directory for the subject data
     invert: bool=False # if True, the polarity will be flipped
     clickselect: list = field(default_factory=defemptylist) #a list indicating the times of the useful protocol runs for the clicks
                 # if empty, then all runs that are found are used.

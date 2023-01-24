@@ -20,12 +20,16 @@ import numpy as np
 import pandas as pd
 import pylibrary.plotting.plothelpers as PH
 import pylibrary.tools.cprint as CP
+import scikit_posthocs
 import seaborn as sns  # makes plot background light grey with grid, no splines. Remove for publication plots
+import statsmodels
+import statsmodels.api as sm
 from matplotlib import pyplot as mpl
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
+from statsmodels.formula.api import ols
 
 import abr_analyzer
 import ABR_dataclasses as ABRDC
@@ -33,9 +37,6 @@ import ABRFuncs
 import getcomputer  # stub to return the computer and base directory
 from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
 from src.ABR_dataclasses import ABR_Data
-from statsmodels.formula.api import ols
-import statsmodels.api as sm
-import statsmodels
 
 basedir, computer_name = getcomputer.getcomputer()
 
@@ -77,7 +78,7 @@ class ABR:
         mode: str = "clicks",
         info: object = ABRDC.ABR_Data(),
         datasetname: str = "",
-        datadirectory: str = "",
+        subject: str = "",
     ):
         """
         Parameters
@@ -119,7 +120,7 @@ class ABR:
             self.show_dots = True
 
         self.df_excel = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
-        self.df_excel = self.df_excel[self.df_excel.DataSet == datasetname]
+        self.df_excel = self.df_excel[self.df_excel.Group == datasetname]
 
         self.dev = 3.0  # should put this in the table
         self.hpf = 500.0
@@ -138,7 +139,7 @@ class ABR:
         self.datapath = Path(datapath)
         self.datasetname = datasetname
 
-        self.datadirectory = datadirectory  # this is the name of the directory that the data is in, not the full path
+        self.subject = subject  # this is the name of the directory that the data is in, not the full path
         self.term = info.term
         self.minlat = info.minlat
         self.invert = (
@@ -416,7 +417,8 @@ class ABR:
 
         """
         # grab the excel data row.
-        drow = self.df_excel[self.df_excel.DataDirectory == self.datadirectory]
+
+        drow = self.df_excel[self.df_excel.Subject == self.subject]
         if drow.Sex.values[0] == "M":
             sex_marker = "x"
         elif drow.Sex.values[0] == "F":
@@ -1371,12 +1373,12 @@ def do_clicks(
             "clicks",
             info=ABR_Datasets[dsname],
             datasetname=dsname,
-            datadirectory=ABR_Datasets[dsname].datadirectory,
+            subject=ABR_Datasets[dsname].subject,
         )
         CP.cprint(
             "r",
             P.df_excel[
-                P.df_excel.DataDirectory == ABR_Datasets[dsname].datadirectory
+                P.df_excel.Subject == ABR_Datasets[dsname].subject
             ].Sex.values,
         )
 
@@ -1398,8 +1400,8 @@ def do_clicks(
         IO_DF.extend(IOdata)
         plot_info.icol = icol
 
-    clickIODF = pd.DataFrame(IO_DF, columns=["subject", "run", "spl", "ppio", "thrs", "group"])
-    clickIODF["group_cat"] = clickIODF["group"].astype("category")
+    clickIODF = pd.DataFrame(IO_DF, columns=["Subject", "run", "spl", "ppio", "thrs", "Group"])
+    clickIODF["group_cat"] = clickIODF["Group"].astype("category")
     fill_circ = MarkerStyle("o", fillstyle="full")
     fill_square = MarkerStyle("s", fillstyle="full")
     if plot_info.IOax[0] is not None:
@@ -1551,9 +1553,9 @@ def get_dirs(
         tonedirs = dirs
 
     ABR_Datasets = {
-        row.DataSet: ABR_Data(
-            directory=Path(row.BasePath, row.DataSet),
-            datadirectory=row.DataDirectory,
+        row.Group: ABR_Data(
+            directory=Path(row.BasePath, row.Group),
+            subject=row.Subject,
             invert=True,
             clickselect=clickdirs,
             toneselect=tonedirs,
@@ -1562,8 +1564,8 @@ def get_dirs(
         ),
     }
     plot_info, IO_DF = do_clicks(
-        row.DataSet,
-        Path(row.BasePath, row.DataSet, row.DataDirectory),
+        row.Group,
+        Path(row.BasePath, row.Group, row.Subject),
         dirs,
         ABR_Datasets,
         plot_info=plot_info,
@@ -1577,10 +1579,10 @@ def analyze_from_excel(
     datasets=["Tessa_NF107"], agerange=(20, 150)
 ):
     df = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
-    for dset in datasets:  # for each of the datasets, analyze
+    for group in datasets:  # for each of the datasets, analyze
         dfion = []
         plot_info = None
-        dfn = df[df.DataSet == dset]  # subset into the full dataset
+        dfn = df[df.Group == group]  # subset into the full dataset
         dfn = dfn.sort_values(["Age", "Sex"])
         dfn = dfn[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
         dfn = dfn.reset_index()  # do this LAST
@@ -1605,14 +1607,14 @@ def analyze_from_excel(
 
             dfion.append(
                 {
-                    "dataset": dset,
-                    "date": d.Date,
-                    "run": d.DataDirectory,
-                    "genotype": d.genotype,
-                    "strain": d.Strain,
-                    "cross": d.cross,
-                    "treatment": d.treatment,
-                    "animal identifier": d["animal identifier"],
+                    "Group": group,
+                    "Date": d.Date,
+                    "Subject": d.Subject,
+                    "Genotype": d.Genotype,
+                    "Strain": d.Strain,
+                    "Cross": d.Cross,
+                    "Treatment": d.Treatment,
+                    "Animal_identifier": d.Animal_identifier,
                     "Age": d.Age,
                     "Sex": d.Sex,
                     "spls": spls,
@@ -1624,12 +1626,12 @@ def analyze_from_excel(
 
         # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
         # dfn.apply(get_dirs,  args=("tones",), axis=1)
-        top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", dset)
+        top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", group)
         df_io = pd.DataFrame(dfion)
 
-        df_io.to_excel(Path(top_directory, f"ClickIO_{dset:s}.xlsx"))
+        df_io.to_excel(Path(top_directory, f"ClickIO_{group:s}.xlsx"))
         if plot_info is not None:
-            top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", dset)
+            top_directory = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data/", group)
             mpl.figure(plot_info.Plot_f.figure_handle)
             fofilename = Path(top_directory, "ClickWaveSummary.pdf")
             mpl.savefig(fofilename)
@@ -1678,11 +1680,11 @@ def reorganize_abr_data(Groups:list, abrdata:object):
     """Reorganize datasets in abrdata into long form
     """
     # print(abrdata.columns)
-    abr_df = pd.DataFrame(["Group", "Subject", "sex", "spls", 'ppio'])
-    abrdict = {"Group": [], "Subject": [], "sex": [], "spls": [], 'ppio': []}
+    abr_df = pd.DataFrame(["Group", "Subject", "Sex", "spls", 'ppio'])
+    abrdict = {"Group": [], "Subject": [], "Sex": [], "spls": [], 'ppio': []}
     # print(abrdata.head())
     for g in Groups:
-        df = abrdata[abrdata.dataset == g].reset_index()
+        df = abrdata[abrdata.Group == g].reset_index()
         for iloc in df.index:
             spls = df.iloc[iloc].spls
             if not isinstance(spls, list):
@@ -1694,20 +1696,34 @@ def reorganize_abr_data(Groups:list, abrdata:object):
                 abrdict["spls"].append(spls[i])
                 abrdict["ppio"].append(ppio[i])
                 abrdict["Group"].append(g)
-                abrdict["Subject"].append(df.iloc[iloc].run)
-                abrdict["sex"].append(df.iloc[iloc].Sex)
+                abrdict["Subject"].append(df.iloc[iloc].Subject)
+                abrdict["Sex"].append(df.iloc[iloc].Sex)
 
     abr_df = pd.DataFrame(abrdict)
     return abr_df
 
+def _compute_threshold(row, baseline):
+    
+    y = np.array(row['ppio'])
+    x = np.array(row['spls'])
+    # Find where the IO function exceeds the baseline threshold
+    # print(grand_df.iloc[i]['ppio'])
+    ithr = np.argwhere(np.array(y) > baseline)[0][0]
+    m = (y[ithr] - y[ithr-1])/(x[ithr] - x[ithr-1])
+    b = y[ithr] - m*x[ithr]
+    bin = 1.0
+    int_thr = (baseline - b)/m
+    interp_thr = np.round(int_thr/bin, 0)*bin
+    print('interp thr: ', row.Subject, int_thr, interp_thr)
+    row['interpolated_threshold'] = interp_thr
+    row['maxabr'] = np.max(y)
+    return row
+    
 
 def compute_io_stats(ppfd: object, Groups: list):
     from statsmodels.stats.anova import AnovaRM
-
-#perform the repeated measures ANOVA
-    print(AnovaRM(data=ppfd, depvar='ppio', subject='Subject', within=['Group'], aggregate_func='mean').fit())
     return
-    model = ols(f"ppio ~ Group*spls", ppfd).fit()
+    model = ols(f"interpolated_threshold ~ C(Group)+Subject", ppfd).fit()
     table = sm.stats.anova_lm(model, typ=2)  # Type 2 ANOVA DataFrame
     p = "=" * 80 + "\n"
     p += str(table) + "\n"
@@ -1716,7 +1732,7 @@ def compute_io_stats(ppfd: object, Groups: list):
     print(p)
 
 
-def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 70)):
+def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 105)):
 
     df0 = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
 
@@ -1726,21 +1742,26 @@ def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 70)):
     # print(len(animal_ids), animal_ids)
 
     top_path = df0.iloc[0].BasePath
-    f, ax = mpl.subplots(1, 2, figsize=(8, 5))
+    PL = PH.regular_grid(rows=1, cols=3, figsize=(10, 4), horizontalspacing=0.1,
+        panel_labels=['A', 'B', 'C'], margins={"topmargin":0.12, "bottommargin":0.18, 'leftmargin': 0.08, 'rightmargin': 0.10},
+        labelposition=(-0.08, 1.05), )
+    # f, ax = mpl.subplots(1, 3, figsize=(9, 5))
+    ax = PL.axarr.ravel()
+
     colors = ["k", "r", "b", "c"]
     markers = ["s", "o", "^", "D"]
     mfill = {"M": "full", "F": None}
 
     grand_df = pd.DataFrame()
-    for k, dset in enumerate(datasets):
-        print("dset: ", dset)
-        df = pd.read_excel(Path(top_path, dset, f"ClickIO_{dset:s}.xlsx"))
-        # some data selection - by age, some data from a dset, treatment
+    for k, Group in enumerate(datasets):
+        print("Group: ", Group)
+        df = pd.read_excel(Path(top_path, Group, f"ClickIO_{Group:s}.xlsx"))
+        # some data selection - by age, some data from a group, treatment
         df = df[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
         # df = df[df.strain != 'FVB']
-        if dset == 'Tessa_BNE':  # just get the control animals from the noise exposure group
-            df = df[df['animal identifier'].isin(animal_ids)]
-        df = df.loc[df.treatment.isin([None, "UnExposed", np.nan])].reset_index()
+        if Group == 'Tessa_BNE':  # just get the control animals from the noise exposure group
+            df = df[df['Animal_identifier'].isin(animal_ids)]
+        df = df.loc[df.Treatment.isin([None, "UnExposed", np.nan])].reset_index()
         df = df.apply(_average, axis=1)
         grand_df = pd.concat((grand_df, df))
        
@@ -1752,42 +1773,102 @@ def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 70)):
     df = grand_df
     PH.nice_plot(ax[0], position=-0.03, direction="outward", ticklength=3)
     PH.referenceline(ax[0], 0.0)
+    PH.set_axes_ticks(ax=ax[0], xticks=[20, 30, 40, 50, 60, 70, 80, 90])
     ax[0].set_ylabel(f"N1-P1 ($\mu V$)")
     ax[0].set_xlabel("Click (dB SPL)")
     ax[0].set_xlim(20., 90.)
+    ax[0].set_ylim(-0.5, 10)
 
     labels = {}
-    d_cba = df[df.dataset == "Tessa_CBA"]
-    n_cba = len(set(d_cba.run.values))
+    d_cba = df[df.Group == "Tessa_CBA"]
+    n_cba = len(set(d_cba.Subject.values))
     labels['CBA'] = f"CBA (N={n_cba:d})"
-    d_fvb = df[df.dataset == "Tessa_FVB"]
-    n_fvb = len(set(d_fvb.run.values))
+    d_fvb = df[df.Group == "Tessa_FVB"]
+    n_fvb = len(set(d_fvb.Subject.values))
     labels['FVB'] = f"FVB (N={n_fvb:d})"
-    d_bne = df[df.dataset == "Tessa_BNE"]
-    n_bne = len(set(d_bne.run.values))
+    d_bne = df[df.Group == "Tessa_BNE"]
+    n_bne = len(set(d_bne.Subject.values))
     labels['NF107::Ai32'] = f"NF107::Ai32 (N={n_bne:d})"
-    d_nf107 = df[df.dataset== "Tessa_NF107"]
+    d_nf107 = df[df.Group== "Tessa_NF107"]
     colors = sns.color_palette("colorblind")
     # print(colors)
     custom_legend = [Line2D([0], [0], marker=None, color=colors[2], lw=2, label=labels['NF107::Ai32']),
                      Line2D([0], [0], marker=None, color=colors[0], lw=2, label=labels['FVB']),
                      Line2D([0], [0], marker=None, color=colors[1], lw=2, label=labels['CBA']),
             ]
-    ax[0].legend(handles=custom_legend, handlelength=1, loc="upper left", fontsize=11, labelspacing=0.33, markerscale=0.5)
+    ax[0].legend(handles=custom_legend, handlelength=1, loc="upper left", fontsize=8, labelspacing=0.33, markerscale=0.5)
 
-    sns.boxplot(data=grand_df, x="dataset", y="threshold", palette="colorblind", ax=ax[1])
+    # this plots thresholds from the initial analysis. Those thresholds can be incorrect.
+    # sns.boxplot(data=grand_df, x="dataset", y="threshold", palette="colorblind", ax=ax[1])
 
+    # here we compute the SD of all curves for levels of 20 and 25dB SPL
+    p_thr = p_df[p_df.spls <= 25.0]
+    baseline = 3.5*np.std(p_thr['ppio'].values)
+    print("baseline: ", baseline)
+    grand_df['interpolated_threshold'] = np.nan
+    grand_df['maxabr'] = np.nan
+    grand_df = grand_df.apply(_compute_threshold, baseline=baseline, axis=1)
+    sns.swarmplot(data=grand_df, x="Group", y="interpolated_threshold", palette="colorblind", ax=ax[1])
+    ax[1].set_ylim(0, 90)
+    ax[1].set_ylabel("Threshold (dB SPL, interpolated)")
+    PH.nice_plot(ax[1], position=-0.03, direction="outward", ticklength=3)
+    ax[1].set_xticklabels(['FVB/J', 'CBA/CaJ', "NF107::Ai32"])
+    ax[1].set_xlabel("Strain")
+    
+    sns.swarmplot(data=grand_df, x="Group", y="maxabr", palette="colorblind", ax=ax[2])
+    PH.nice_plot(ax[2], position=-0.03, direction="outward", ticklength=3)
+    ax[2].set_ylim(0, 10)
+    ax[2].set_ylabel("Maximum ABR ($\mu V$)")
+    ax[2].set_xticklabels(['FVB/J', 'CBA/CaJ', "NF107::Ai32"])
+    ax[2].set_xlabel("Strain")
+ 
     print(f"N CBA: {n_cba:d}   FVB: {n_fvb:d}  BNE: {n_bne:d}, NF107Ai32: {n_bne:d}")
 
-    print(grand_df.columns)
-    print("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
+    # print("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
     # some stats... 
-    # compute_io_stats(p_df, Groups= datasets)
+    # compute_io_stats(grand_df, Groups=datasets)
+    from scipy import stats
+    fvb = grand_df[grand_df.Group == 'Tessa_FVB']
+    cba = grand_df[grand_df.Group == 'Tessa_CBA']
+    bne = grand_df[grand_df.Group == 'Tessa_BNE']
+
+    U1 = stats.kruskal(fvb.interpolated_threshold,
+                      cba.interpolated_threshold,
+                      bne.interpolated_threshold)
+    post_U1 = scikit_posthocs.posthoc_dunn([fvb.interpolated_threshold,
+                                            cba.interpolated_threshold,
+                                            bne.interpolated_threshold],
+                                            p_adjust='bonferroni')
+    print("Kruskall-Wallis on Thresholds")
+    print(U1)
+    print("Post test Dunns with Bonferroni correction: ")
+    print(post_U1)
+    U2 = stats.kruskal(fvb.maxabr,
+                      cba.maxabr,
+                      bne.maxabr)
+    print("\nKruskall-Wallis on maximum ABR amplitude")
+    print(U2)
+    post_U2 = scikit_posthocs.posthoc_dunn([fvb.maxabr,
+                                            cba.maxabr,
+                                            bne.maxabr],
+                                            p_adjust='bonferroni')
+    print("Post test Dunns with Bonferroni correction: ")
+    print(post_U2)
+    mpl.savefig("/Users/pbmanis/Documents/Lab/Manuscripts-inProgress/SGC_NF107/ABR_fig.pdf")
+
     mpl.show()
 
 
 if __name__ == "__main__":
-    #
+    # Say, "the default sans-serif font is COMIC SANS"
+    import matplotlib
+    from matplotlib import font_manager as FM
+    mpl.rcParams.update({
+    "text.usetex": True,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Helvetica"]})
+    myFont = FM.FontProperties(family="Arial", size=11)
+    
     # main()
-    # analyze_from_excel(datasets=['Tessa_FVB', 'Tessa_CBA', 'Tessa_BNE'])
+    # analyze_from_excel(datasets= ['Tessa_BNE', 'Tessa_NF107Ai32', 'Tessa_CBA'])
     plot_io_from_excel(datasets = ['Tessa_FVB', 'Tessa_CBA', 'Tessa_BNE'])

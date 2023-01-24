@@ -11,16 +11,20 @@ mypy==0.971
 # requirements
 matlab
 h5py
+openpyxl==3.0.10
+xlsxwriter
+jinja2
 mat4py
 numpy>=1.20.40
 numba>=0.43.1
 scipy
-seaborn
+seaborn==0.12.2
 pandas
+statsmodels
 PyQt6
 PyQt6-sip
 # PyQt5_sip-12.10.1
-matplotlib>=3.5.0
+matplotlib>=3.6.0
 
 -e /Users/pbmanis/Desktop/Python/pylibrary
 # -e git+https://github.com/pbmanis/pylibrary.git#egg=pylibrary #@f16bcbe490e8a11d99792dfd65d3ed18a0cd6756#egg=pylibrary
