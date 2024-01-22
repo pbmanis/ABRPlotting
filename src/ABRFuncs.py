@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Union
 
 import mat4py
-import MatFileMethods
+
 import scipy
 import seaborn as sns
 

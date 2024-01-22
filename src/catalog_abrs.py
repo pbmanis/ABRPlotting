@@ -6,23 +6,40 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+    """ Generate an excel sheet that catalogs all of the ABR data across multiple eperiments.
+
+    Returns
+    -------
+    _type_
+        _description_
+
+    Raises
+    ------
+    ValueError
+        _description_
+    ValueError
+        _description_
+    ValueError
+        _description_
+    """
+
+# define where the data will be found:
 toppath = Path("/Volumes/Pegasus_002/ManisLab_Data3/abr_data")
 
 @dataclass
 class metadata:
-    date: str = None
-    strain: str = None
-    age: str = None
-    sex: str = None
-    animal_identifier: str = None
-    treatment: str = None
-    genotype: str = None
-    cross: str = None
+    Date: str = None
+    Strain: str = None
+    Age: str = None
+    Sex: str = None
+    Animal_identifier: str = None
+    Treatment: str = None
+    Genotype: str = None
+    Cross: str = None
 
 
-"""Try to find all the duplicated ABR datasets
+"""Try to find all the duplicated ABR subjects
 """
-
 
 
 
@@ -68,13 +85,13 @@ def find_dupes():
     print("\nN True Dupes: ", n_true)
 
 def get_runs(f):
-    """Get the ABR stimulus runs
+    """Get the ABR stimulus runs for this subject
 
     Args:
-        f (path): Path to data dirextory
+        f (path): Path to data subject dirextory
 
     Returns:
-        string: a string listing the runs that were done.
+        string: a string listing the subjects that were done.
     """
     dsets1 = f.glob("*-SPL.txt")
     dsets2 = f.glob("*-kHz.txt")
@@ -118,7 +135,12 @@ def get_metadata(dirname, filepath=None):
     Different users used different fields for the names, so we have a lot to parse
     Typical:
     10-04-2019_ABR_P63_F2_CNTNAP2KO
-    from this we get the date, the age, the sex and animal # for the day, and the genotype.
+    from this we ge:
+        1. date that the abr was run
+        2. the subject age (field with Pnn, or PnnD)
+        3. the subject sex and # for the day
+        4. the strain (here CNTNAP2)
+        5. the genotype (here ,KO)
     Separators might be spaces or underscores (most commonly), or dashes (less common)
 
     Args:
@@ -159,15 +181,15 @@ def get_metadata(dirname, filepath=None):
         print("checking fs: ", fs)
         m = r_age.match(fs)
         if m is not None:
-            md.age = int(m[0].lower().strip("p"))
+            md.Age = int(m[0].lower().strip("p"))
             continue
         s = r_sex.match(fs)
         if s is not None:
-            md.sex = s[0][0].upper()
+            md.Sex = s[0][0].upper()
             continue
         a = r_id.match(fs)
         if a is not None:
-            md.animal_identifier = a[0].upper()
+            md.Animal_identifier = a[0].upper()
             continue
         exp = r_exposure.match(fs)
         if exp is not None:
@@ -191,24 +213,24 @@ def get_metadata(dirname, filepath=None):
                 if exp.group('wk') is not None or exp.group('dur') is not None or exp.group('exp') is not None:
                     raise ValueError(f"Unable to parse potential exposure string: {fs:s}")
 
-            md.treatment = treat
+            md.Treatment = treat
 
         for s in strains:
             if fs.startswith(s) and len(fs) == len(s):
-                md.strain = s.upper()
+                md.Strain = s.upper()
             elif fs.startswith(s):
-                md.strain = s.upper()
+                md.Strain = s.upper()
                 gt = fs[len(s):]
                 print("gt: ", s, gt, filepath)
                 if gt in genotypes:
-                    md.genotype = gt.upper()
+                    md.Genotype = gt.upper()
                 else:
-                    md.cross = gt.upper() # not a genotype, probably a cross.
+                    md.Cross = gt.upper() # not a genotype, probably a cross.
                 break
-        if md.genotype is not None:
+        if md.Genotype is not None:
             for g in genotypes:
                 if fs == g:
-                    md.genotype = g.upper()
+                    md.Genotype = g.upper()
                     break
 
         # print(md, dirname)
@@ -255,8 +277,8 @@ def highlight_by_name(row):
             "ABRstransfer": "mediumorchid",
             "Transgenic-ABRs": "cyan",
     }
-    if row.DataSet in colors.keys():
-        return [f"background-color: {colors[row.DataSet]:s}" for s in range(len(row))]
+    if row.Group in colors.keys():
+        return [f"background-color: {colors[row.Group]:s}" for s in range(len(row))]
     else:
         return [f"background-color: white" for s in range(len(row))]
         
@@ -331,8 +353,8 @@ def make_excel_catalog():
         else:
             runs = np.nan
         mdata = get_metadata(dirname=subdir, filepath=f) # get some metadata from the subdir name: multiple parses... 
-        abr_f.append({"DataSet": fp[5], "Date": mdata.date, "Age": mdata.age, "Strain": mdata.strain, "Sex": mdata.sex,
-            "animal identifier": mdata.animal_identifier, "treatment": mdata.treatment,"genotype": mdata.genotype, "cross": mdata.cross,
+        abr_f.append({"Dataset": fp[5], "Date": mdata.Date, "Age": mdata.Age, "Strain": mdata.Strain, "Sex": mdata.Sex,
+            "Animal_identifier": mdata.Animal_identifier, "Treatment": mdata.Treatment,"Genotype": mdata.Genotype, "Cross": mdata.Cross,
             "DataDirectory": subdir, "Runs": runs, "BasePath": str(Path(*fp[:5]))})
     df = pd.DataFrame(abr_f)
     print(df.head())

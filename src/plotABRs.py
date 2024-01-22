@@ -1,10 +1,30 @@
 """PlotABRs
 
 Plot ABR data from our matlab program. This relies on an excel file
-to specify
-experiments. The directory for each subject is also expected to be named in a
+to specify experiments (ABRs.xlsx). 
+The directory for each subject is expected to be named in a
 way that identifies the subject and experimental group(s). This allows us to
 make plots that correctly assign each subject with markers and labels. 
+However, not everyone did this in a consistent manner.
+
+Organization of ABRs.xlsx file includes:
+Dataset: This column refers to the dataset (may be the person who did the experiments, 
+or a subset of their experiments, or a particular set of experiments).
+Subject: This column refers to the subject (mouse) that was tested. Not all mice have a Subject ID.
+Treatment: This column refers to the treatment group (e.g., WT, KO, etc.)
+Genotype: This column refers to the genotype of the mouse (e.g., WT, KO, Het, strain, etc.)
+Cross: This column identifies the type of cross that led to the genotyp (sometimes).
+Strain: This column identifies the strain of the mouse/mouse line (e.g., CBA, C57, DBA, etc.)
+
+Note that not all of these fields are filled in at present, depending on the detailed
+data that is in the notebook/file notes and whether I am using the data or not.
+
+
+The "codefile" may have further information that links the subjects to their treatment if
+the study is blinded. 
+In this case, we need to cross-reference the codefile Animal_ID (renamed here to Subject) with the
+Animal_identifier, and the DataDirectory in ABRS.xlsx.
+Also, this assigns the "Group" field.
 
 """
 import ast
@@ -30,15 +50,29 @@ from matplotlib.lines import Line2D
 from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
 from statsmodels.formula.api import ols
-
-import abr_analyzer
-import ABR_dataclasses as ABRDC
-import ABRFuncs
-import getcomputer  # stub to return the computer and base directory
+import pprint
+import pyqtgraph
+import src.abr_analyzer
+import src.ABR_dataclasses as ABRDC
+import src.ABRFuncs as ABRFuncs
+import src.getcomputer  # stub to return the computer and base directory
 from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
 from src.ABR_dataclasses import ABR_Data
+from src.get_configuration import get_configuration
+from pyqtgraph.Qt.QtCore import QObject
 
-basedir, computer_name = getcomputer.getcomputer()
+# from ephys.tools import fitting  # use to fit hill function to IO curve.
+
+pp = pprint.PrettyPrinter(indent=4)
+
+experiments = get_configuration("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
+experimentnames = experiments[0]
+e = experimentnames.index("NF107Ai32_NIHL")
+experimentname = experiments[0][e]
+Experiment = experiments[1][experimentname]
+
+
+# basedir, computer_name = getcomputer.getcomputer()
 
 ABRF = ABRFuncs.ABRFuncs()
 
@@ -74,7 +108,7 @@ class ABR:
 
     def __init__(
         self,
-        datapath: str,
+        datapath: Union[Path, str],
         mode: str = "clicks",
         info: object = ABRDC.ABR_Data(),
         datasetname: str = "",
@@ -139,7 +173,9 @@ class ABR:
         self.datapath = Path(datapath)
         self.datasetname = datasetname
 
-        self.subject = subject  # this is the name of the directory that the data is in, not the full path
+        self.subject = (
+            subject  # this is the name of the directory that the data is in, not the full path
+        )
         self.term = info.term
         self.minlat = info.minlat
         self.invert = (
@@ -155,6 +191,7 @@ class ABR:
                 code_filename = code_filename.replace("/", ".")
                 CodeFile = importlib.import_module(code_filename)
                 print("Imported Codefile: ", CodeFile)
+                raise ValueError("Code files read this way are deprectated")
         else:
             CodeFile = None
         # print("Codefile: ", CodeFile)
@@ -162,9 +199,7 @@ class ABR:
 
         # build color map where each SPL is a color (cycles over 12 levels)
         self.max_colors = 25
-        bounds = np.linspace(
-            0, 120, self.max_colors
-        )  # 0 to 120 db inclusive, 5 db steps
+        bounds = np.linspace(0, 120, self.max_colors)  # 0 to 120 db inclusive, 5 db steps
         color_labels = np.unique(bounds)
         self.color_map = ABRF.makeColorMap(self.max_colors, color_labels)
         color_labels2 = list(range(self.max_colors))
@@ -206,9 +241,7 @@ class ABR:
         # A click run will consist of an SPL, n and p file, but NO additional files.
         self.clicks = {}
         for s in self.spls.keys():
-            if s not in list(
-                self.freqs.keys()
-            ):  # skip SPL files associated with a tone map
+            if s not in list(self.freqs.keys()):  # skip SPL files associated with a tone map
                 self.clicks[s] = self.spls[s]
 
         # inspect the directory and get a listing of all the tone and click maps
@@ -302,9 +335,7 @@ class ABR:
         select, freqs = self.adjustSelection(select)
         # get data for clicks and plot all on one plot
         self.clickdata = {}
-        markerstyle, group = ABRF.getMarkerStyle(
-            directory=directory, markers=self.info.markers
-        )
+        markerstyle, group = ABRF.getMarkerStyle(directory=directory, markers=self.info.markers)
         print("click maps: ", self.clickmaps.keys())
         for i, s in enumerate(self.clickmaps.keys()):
             if select is not None:
@@ -341,9 +372,7 @@ class ABR:
 
         # convert select to make life easier
         # select list should have lists of strings ['0124', '0244'] or Nones...
-        markerstyle, group = ABRF.getMarkerStyle(
-            directory=directory, markers=self.info.markers
-        )
+        markerstyle, group = ABRF.getMarkerStyle(directory=directory, markers=self.info.markers)
 
         # iterate through the files in the directory, looking for tone maps
         for i, s in enumerate(self.tonemaps.keys()):
@@ -448,12 +477,8 @@ class ABR:
             # print(waves_df.head())
             waves_df["time"] = tuple(t)
             for i, spln in enumerate(splnames):
-                waves_df[spln] = (
-                    waves[i] * 1e6
-                )  # convert to microvolts for the CSV file
-            waves_df.to_csv(
-                Path("ABR_CSVs", f"{str(self.datapath.parts[-1]):s}" + ".csv")
-            )
+                waves_df[spln] = waves[i] * 1e6  # convert to microvolts for the CSV file
+            waves_df.to_csv(Path("ABR_CSVs", f"{str(self.datapath.parts[-1]):s}" + ".csv"))
             A.analyze(t, waves, dev=self.dev)
             print("A.thresholds: ", A.thresholds)
             pnp = A.p1n1p2
@@ -492,9 +517,7 @@ class ABR:
                 # plot a calibration bar for the voltage traces
                 x = [7.5, 7.5]
                 y = np.array([0, 1e-6]) * sf * sf_cvt + 105.0  # put at 105 dB...
-                plottarget.plot(
-                    x, y, linewidth=1.5
-                )  # put 1 uV cal bar at highest sound level
+                plottarget.plot(x, y, linewidth=1.5)  # put 1 uV cal bar at highest sound level
                 plottarget.text(
                     x[0] + 0.1,
                     np.mean(y),
@@ -545,9 +568,7 @@ class ABR:
                 # if len(latmap) > 2 and self.show_dots:
                 #     plottarget.plot(fitline, spls, "g-", linewidth=0.7)
                 if len(latmap) > 2 and self.show_dots:
-                    plottarget.plot(
-                        A.p1_latencies[0], A.p1_latencies[1], "g-", linewidth=0.7
-                    )
+                    plottarget.plot(A.p1_latencies[0], A.p1_latencies[1], "g-", linewidth=0.7)
 
                 if spls[j] >= thr_spl or len(latmap) <= 2:
                     IO[j] = sf_cvt * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
@@ -799,9 +820,7 @@ class ABR:
                             color=[0.5, 0.5, 0.5, 0.4],
                             linewidth=5,
                         )
-                    plottarget.plot(
-                        t, 4 * waves[j] * 1e6 + spls[j], color=self.color_map[spls[j]]
-                    )
+                    plottarget.plot(t, 4 * waves[j] * 1e6 + spls[j], color=self.color_map[spls[j]])
                 plottarget.set_xlim(0, 8.0)
                 plottarget.set_ylim(10.0, 110.0)
                 frtitle = "%.1f kHz" % (float(fr) / 1000.0)
@@ -877,7 +896,7 @@ class ABR:
                 "Subject",
                 "threshold",
                 "noise_exposure",
-                "sex",
+                "Sex",
                 "P_age",
                 "day_age",
                 "genotype",
@@ -951,7 +970,7 @@ class ABR:
                 "Freq_jittered",
                 "threshold",
                 "noise_exposure",
-                "sex",
+                "Sex",
                 "P_age",
                 "day_age",
             ],
@@ -959,9 +978,7 @@ class ABR:
         df.to_pickle("tones_test.pkl")
         return df
 
-    def plotClickThresholds(
-        self, allthrs, name, show_lines: bool = True, ax: object = None
-    ):
+    def plotClickThresholds(self, allthrs, name, show_lines: bool = True, ax: object = None):
         """
         Make a plot of the click thresholds for all of the datasets.
         Data are plotted as scatter/box plots for each category
@@ -986,12 +1003,12 @@ class ABR:
 
         df = self.get_dataframe_clicks(allthrs)
 
-        # sns.stripplot(x="genotype", y="threshold", data=df, hue="sex", kind="violin", ax=ax)
+        # sns.stripplot(x="genotype", y="threshold", data=df, hue="Sex", kind="violin", ax=ax)
 
         sns.boxplot(
             x="genotype",
             y="threshold",
-            hue="sex",
+            hue=S,
             data=df,
             whis=2.0,
             width=0.5,
@@ -1004,7 +1021,7 @@ class ABR:
         sns.swarmplot(
             x="genotype",
             y="threshold",
-            hue="sex",
+            hue="Sex",
             data=df,
             order=["WT", "KO"],
             ax=ax,
@@ -1050,9 +1067,7 @@ class ABR:
         v = [Size.Fixed(0.8), Size.Fixed(4.0)]
         divider = Divider(fig, (0, 0, 1, 1), h, v, aspect=False)
         # The width and height of the rectangle are ignored.
-        ax = fig.add_axes(
-            divider.get_position(), axes_locator=divider.new_locator(nx=1, ny=1)
-        )
+        ax = fig.add_axes(divider.get_position(), axes_locator=divider.new_locator(nx=1, ny=1))
 
         fig.suptitle(self.datasetname)
         PH.nice_plot(ax, position=-0.05, direction="outward", ticklength=4)
@@ -1125,9 +1140,7 @@ class ABR:
             fnamepos = datasetname + "-p.txt"
             fnameneg = datasetname + "-n.txt"
             try:
-                waves, tb = self.read_dataset(
-                    self.datapath, "click", fnamepos, fnameneg, lineterm
-                )
+                waves, tb = self.read_dataset(self.datapath, "click", fnamepos, fnameneg, lineterm)
             except:
                 print("Failed on datasetname: ", datasetname)
                 print(" with dataset: ", dataset)
@@ -1226,6 +1239,7 @@ class ABR:
 ###
 ###======================================================================================
 ###
+
 
 def build_click_plot(nplots=1):
     m, n = PH.getLayoutDimensions(nplots)
@@ -1377,9 +1391,7 @@ def do_clicks(
         )
         CP.cprint(
             "r",
-            P.df_excel[
-                P.df_excel.Subject == ABR_Datasets[dsname].subject
-            ].Sex.values,
+            P.df_excel[P.df_excel.Subject == ABR_Datasets[dsname].subject].Sex.values,
         )
 
         if icol == 0:
@@ -1461,7 +1473,7 @@ def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
     fofilename = Path(top_directory, "ToneSummary.pdf")
     allthrs = {}
     with PdfPages(fofilename) as pdf:
-        for k in range(len(tonesel)):
+        for k, v in enumerate(tonesel):
             P = ABR(Path(top_directory, dirs[k]), "tones", datasetname=dsname)
             P.getToneData(select=tonesel[k], directory=dirs[k])
             P.plotTones(select=tonesel[k], pdf=pdf)
@@ -1484,6 +1496,21 @@ def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
     mpl.show()
 
 
+# read the Coding file, which contains information about the ABR dates
+def get_coding_data(experiment):
+    print("experiment keys: ", list(experiment.keys()))
+    assert "databasepath" in experiment.keys()
+    print(experiment["databasepath"])
+    coding_file = Path(
+        experiment["databasepath"], experiment["directory"], experiment["coding_file"]
+    )
+    assert coding_file.is_file()
+    coding = pd.read_excel(coding_file, sheet_name=experiment["coding_sheet"])
+    coding.rename(columns={"Animal_ID": "Subject"}, inplace=True)
+    print(coding.columns)
+    return coding
+
+
 def analyze_from_ABR_Datasets_main():
     if len(sys.argv) > 1:
         dsname = sys.argv[1]
@@ -1495,9 +1522,7 @@ def analyze_from_ABR_Datasets_main():
     if dsname not in list(ABR_Datasets.keys()):
         print("These are the known datasets: ")
         print("   ", list(ABR_Datasets.keys()))
-        raise ValueError(
-            "The selected dataset %s not found in our list of known datasets"
-        )
+        raise ValueError("The selected dataset %s not found in our list of known datasets")
     if mode not in ["tones", "clicks"]:
         raise ValueError("Second argument must be tones or clicks")
 
@@ -1524,9 +1549,7 @@ def analyze_from_ABR_Datasets_main():
         raise ValueError(f"Mode is not known: {mode:s}")
 
 
-def get_dirs(
-    row, datatype="click", plot_info=None, nplots: int = 1, plot_index: int = 0
-):
+def get_dirs(row, datatype="click", plot_info=None, nplots: int = 1, plot_index: int = 0):
     """get the data set directories for this row that have the data type
 
     Args:
@@ -1575,14 +1598,54 @@ def get_dirs(
     return dirs, plot_info, IO_DF
 
 
-def analyze_from_excel(
-    datasets=["Tessa_NF107"], agerange=(20, 150)
-):
+class Picker(QObject):
+    def __init__(self, space=None, data=None, axis=None):
+        assert space in [None, 2, 3]
+        self.space = space  # dimensions of plot (2 or 3)
+        self.setData(data, axis)
+        self.annotateLabel = None
+
+    def setData(self, data, axis=None):
+        self.data = data
+        self.axis = axis
+
+    def setAction(self, action):
+        # action is a subroutine that should be called when the
+        # action will be called as self.action(closestIndex)
+        self.action = action
+
+    def pickEvent(self, event, ax):
+        """Event that is triggered when mouse is clicked."""
+        # print("event index: ", event.ind)
+        # print(dir(event.mouseevent))
+        # print(event.mouseevent.inaxes == ax)
+        # print(ax == self.axis)
+        # print("psi.Picker pickEvent: ", self.data.iloc[event.ind])  # find the matching data.
+        return
+
+
+def pick_handler(event, picker_func):
+    print("\nDataframe indices: ", event.ind)
+    # print(len(event.ind))
+
+    print("   # points in plot: ", len(picker_func.data))
+    print(picker_func.data.index)  # index into the dataframe
+    for i in event.ind:
+        day = picker_func.data.iloc[i]
+        print("index: ", i)
+        print(day)
+
+        return None
+
+
+def analyze_from_excel(datasets=["Tessa_NF107"], agerange=(20, 150)):
     df = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
-    for group in datasets:  # for each of the datasets, analyze
+    df.rename(columns={"Group": "dataset"}, inplace=True)
+    df["Group"] = ""  # nothing here...
+    for dataset in datasets:  # for each of the datasets, analyze
         dfion = []
         plot_info = None
-        dfn = df[df.Group == group]  # subset into the full dataset
+        dfn = df[df.dataset == dataset]  # subset into the full dataset
         dfn = dfn.sort_values(["Age", "Sex"])
         dfn = dfn[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
         dfn = dfn.reset_index()  # do this LAST
@@ -1607,14 +1670,15 @@ def analyze_from_excel(
 
             dfion.append(
                 {
-                    "Group": group,
+                    "dataset": dataset,
+                    "Group": "",  # this has to be translated later...
                     "Date": d.Date,
-                    "Subject": d.Subject,
+                    "DataDirectory": d.DataDirectory,
                     "Genotype": d.Genotype,
                     "Strain": d.Strain,
                     "Cross": d.Cross,
                     "Treatment": d.Treatment,
-                    "Animal_identifier": d.Animal_identifier,
+                    "Subject": d.Subject,
                     "Age": d.Age,
                     "Sex": d.Sex,
                     "spls": spls,
@@ -1622,7 +1686,6 @@ def analyze_from_excel(
                     "threshold": thr,
                 }
             )
-
 
         # x = dfn.apply(get_dirs,  args=("click", plot_info), axis=1)  # all of the data in a given dataset
         # dfn.apply(get_dirs,  args=("tones",), axis=1)
@@ -1645,6 +1708,7 @@ def analyze_from_excel(
             mpl.savefig(fo4filename)
     mpl.show()
 
+
 def _average(row):
     """Average repeated measures in an IO function:
     If there are multiple recordings at one SPL (for clicks), those are
@@ -1661,10 +1725,10 @@ def _average(row):
     spls = ast.literal_eval(row.spls)
     ppio = ast.literal_eval(row.ppio)
     spl_new = np.unique(spls)
-    # Use bincount to get the accumulated summation for each unique x, and 
+    # Use bincount to get the accumulated summation for each unique x, and
     # divide each summation by the respective count of each unique value in x
-    ppio_mean = np.bincount(spls, weights=ppio)/np.bincount(spls)
-    ppio_mean = [p for p in ppio_mean if not pd.isnull(p)]  # bincount works on bin width of 1... 
+    ppio_mean = np.bincount(spls, weights=ppio) / np.bincount(spls)
+    ppio_mean = [p for p in ppio_mean if not pd.isnull(p)]  # bincount works on bin width of 1...
     row.spls = spl_new.tolist()
     row.ppio = ppio_mean
     return row
@@ -1676,52 +1740,140 @@ def _row_convert(row):
     row.ppio = ast.literal_eval(row.ppio)
     return row
 
-def reorganize_abr_data(Groups:list, abrdata:object):
+
+def reorganize_abr_data(
+    datasets: list,
+    groups: list,
+    abr_data: pd.DataFrame,
+    coding_data: Union[pd.DataFrame, None] = None,
+):
     """Reorganize datasets in abrdata into long form
+    This also matches animals and tags each animal by the group and dataset it belongs to
+    using the animal_id, group and datasets columns.
+
     """
     # print(abrdata.columns)
-    abr_df = pd.DataFrame(["Group", "Subject", "Sex", "spls", 'ppio'])
-    abrdict = {"Group": [], "Subject": [], "Sex": [], "spls": [], 'ppio': []}
-    # print(abrdata.head())
-    for g in Groups:
-        df = abrdata[abrdata.Group == g].reset_index()
-        for iloc in df.index:
-            spls = df.iloc[iloc].spls
-            if not isinstance(spls, list):
-                spls = ast.literal_eval(spls)
-            ppio = df.iloc[iloc].ppio
-            if not isinstance(ppio, list):
-                ppio = ast.literal_eval(ppio)
-            for i, spl in enumerate(spls):
-                abrdict["spls"].append(spls[i])
-                abrdict["ppio"].append(ppio[i])
-                abrdict["Group"].append(g)
-                abrdict["Subject"].append(df.iloc[iloc].Subject)
-                abrdict["Sex"].append(df.iloc[iloc].Sex)
-
-    abr_df = pd.DataFrame(abrdict)
+    abr_df = pd.DataFrame(["group", "Subject", "Sex", "spls", "ppio", "dataset"])
+    abr_dict: dict = {
+        "group": [],
+        "Subject": [],
+        "ExpSPL": [],
+        "Sex": [],
+        "spls": [],
+        "ppio": [],
+        "Dataset": [],
+    }
+    # print("abrdata head: ", abrdata.head())
+    # print("abrdata unique subjects: ", abr_data.Subject.unique())
+    # print("Unique datasets in abrdata: ", abr_data["Dataset"].unique())
+    coding_data = coding_data[coding_data["Group"].isin(groups)]
+    for d in datasets:  # top level - data may be derived from multiple datasets
+        print("Working with dataset: ", d)
+        df_ds = abr_data[abr_data["Dataset"] == d].reset_index()
+        unique_subjects = df_ds.Subject.unique()
+        # print("    Unique subjects in abr_data: ", unique_subjects)
+        if coding_data is not None:
+            print("    Unique subjects in coding data: ", coding_data.Subject.unique())
+        for subject in unique_subjects:
+            if pd.isnull(subject) and coding_data is not None:
+                continue  # no subject id, skip if we don't have a coding file
+            subject_coding = coding_data[coding_data["Subject"] == subject]
+            if subject_coding.empty:
+                CP.cprint("r", f"Subject {subject:s} not found in coding data file")
+                continue
+            print("Adding Subject: ", subject, "Group: ", subject_coding["Group"].values[0])
+            group = subject_coding["Group"].values[0]  # get the group this subject belongs to.
+            ExpSPL = subject_coding["SPL"].values[0]
+            df_g = abr_data[abr_data["Subject"] == subject].reset_index()
+            for iloc in df_g.index:
+                # print("iloc: ", iloc)
+                spls = df_g.iloc[iloc].spls
+                if not isinstance(spls, list):
+                    spls = ast.literal_eval(spls)
+                ppio = df_g.iloc[iloc].ppio
+                if not isinstance(ppio, list):
+                    ppio = ast.literal_eval(ppio)
+                for i, spl in enumerate(spls):
+                    abr_dict["spls"].append(spls[i])
+                    abr_dict["ppio"].append(ppio[i])
+                    abr_dict["group"].append(group)
+                    abr_dict["ExpSPL"].append(ExpSPL)
+                    abr_dict["Subject"].append(df_g.iloc[iloc].Subject)
+                    abr_dict["Sex"].append(df_g.iloc[iloc].Sex)
+                    abr_dict["Dataset"].append(df_g.iloc[iloc].Dataset)
+    # print("Subject column: ", abr_dict["Subject"])
+    abr_df = pd.DataFrame(abr_dict)
+    print("# of entries in the abr dataframe: ", len(abr_df))
+    # print("abr_df columns: ", abr_df.columns)
+    # print(abr_df.head())
     return abr_df
 
+
 def _compute_threshold(row, baseline):
-    
-    y = np.array(row['ppio'])
-    x = np.array(row['spls'])
+    """_compute_threshold Compute a threshold by smoothing the curve by fitting
+    to a Hill function, then get the threshold crossing to the nearest dB.
+
+    Parameters
+    ----------
+    row : _type_
+        _description_
+    baseline : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    y = np.array(row["ppio"])
+    x = np.array(row["spls"])
     # Find where the IO function exceeds the baseline threshold
     # print(grand_df.iloc[i]['ppio'])
-    ithr = np.argwhere(np.array(y) > baseline)[0][0]
-    m = (y[ithr] - y[ithr-1])/(x[ithr] - x[ithr-1])
-    b = y[ithr] - m*x[ithr]
-    bin = 1.0
-    int_thr = (baseline - b)/m
-    interp_thr = np.round(int_thr/bin, 0)*bin
-    print('interp thr: ', row.Subject, int_thr, interp_thr)
-    row['interpolated_threshold'] = interp_thr
-    row['maxabr'] = np.max(y)
+    # yd[xn] = p[1] / (1.0 + (p[2]/x[xn])**p[3])
+    from lmfit import Model
+
+    def hill(x, vmax, v50, n):
+        return vmax / (1.0 + (v50 / x) ** n)
+
+    Hillmodel = Model(hill)
+    Hillmodel.set_param_hint("vmax", min=0.0, max=20.0)
+    Hillmodel.set_param_hint("v50", min=0.0, max=100.0)
+    Hillmodel.set_param_hint("n", min=1.0, max=5.0)
+    params = Hillmodel.make_params(vmax=5, v50=50.0, n=2)
+
+    result = Hillmodel.fit(y, params, x=x)
+    yfit = result.best_fit
+    xs = np.linspace(0, 90, 91)
+    # print("yfit: ", yfit)
+    ys = Hillmodel.eval(x=xs, params=result.params)
+
+    # ithr = np.argwhere(np.array(y) > baseline)
+    ithr = np.argwhere(np.array(ys) > baseline)
+    # print(len(ithr), np.max(y), baseline)
+    if len(ithr) == 0:
+        ithr = len(y) - 1
+        # print("No threshold found: ", row.Subject)
+        interp_thr = 100.0
+    else:
+        # ithr = ithr[0][0]
+        # m = (y[ithr] - y[ithr - 1]) / (x[ithr] - x[ithr - 1])
+        # b = y[ithr] - m * x[ithr]
+        # bin = 1.0
+        # int_thr = (baseline - b) / m
+        # interp_thr = np.round(int_thr / bin, 0) * bin
+        # print("interp thr: ", row.Subject, int_thr, interp_thr)
+        interp_thr = xs[ithr][0][0]
+    if interp_thr > 90.0:
+        interp_thr = 100.0
+    # print("interpthr: ", interp_thr)
+    row["interpolated_threshold"] = interp_thr
+    row["maxabr"] = np.max(y)
     return row
-    
+
 
 def compute_io_stats(ppfd: object, Groups: list):
     from statsmodels.stats.anova import AnovaRM
+
     return
     model = ols(f"interpolated_threshold ~ C(Group)+Subject", ppfd).fit()
     table = sm.stats.anova_lm(model, typ=2)  # Type 2 ANOVA DataFrame
@@ -1732,19 +1884,117 @@ def compute_io_stats(ppfd: object, Groups: list):
     print(p)
 
 
-def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 105)):
+def compute_other_stats(grand_df, groups=["Tessa_FVB", "Tessa_CBA", "Tessa_BNE"]):
+    from scipy import stats
 
+    print("groups: ", groups)
+    print("Groups in the grand dataframe: ", grand_df.Group.unique())
+    data = {}
+    for group in groups:
+        data[group] = grand_df[grand_df.Group == group]
+
+        U1 = stats.kruskal(*[data[dg].interpolated_threshold for dg in groups])
+
+        # post_U1 = scikit_posthocs.posthoc_dunn([fvb.interpolated_threshold,
+        #                                     cba.interpolated_threshold,
+        #                                     bne.interpolated_threshold],
+        #                                 p_adjust='bonferroni')
+        post_U1 = sckikit_posthocs.posthoc_dunn([data[dg].interpolated_threshold for dg in groups])
+    print("Kruskall-Wallis on Thresholds")
+    print(U1)
+    print("Post test Dunns with Bonferroni correction: ")
+    print(post_U1)
+    U2 = stats.kruskal(*[data[dg].maxabr for dg in groups])
+    print("\nKruskall-Wallis on maximum ABR amplitude")
+    print(U2)
+    post_U2 = scikit_posthocs.posthoc_dunn(
+        [data[dg].maxabr for dg in groups], p_adjust="bonferroni"
+    )
+    print("Post test Dunns with Bonferroni correction: ")
+    print(post_U2)
+
+
+def set_groups(grand_df, coding_data: Union[pd.DataFrame, None] = None):
+    if coding_data is None:
+        grand_df["group"] = "Control"  # set ALL to control
+        return grand_df
+    grand_df["group"] = ""
+    for i, row in grand_df.iterrows():
+        subject = row["Subject"]
+        # print("subject: ", subject)
+        if pd.isnull(subject) or subject == "nan" or subject == "":
+            grand_df.at[i, "group"] = "What?"
+            continue
+        group = coding_data[coding_data["Subject"] == subject]["Group"]
+        ExpSPL = coding_data[coding_data["Subject"] == subject]["SPL"]
+        if not pd.isnull(group).all():
+            grand_df.at[i, "group"] = group.values[0]
+            grand_df.at[i, "ExpSPL"] = ExpSPL.values[0]
+    return grand_df
+
+def relabel_xaxes(axp, experiment, angle=None):
+    if "new_xlabels" in experiment.keys():
+        xlabels = axp.get_xticklabels()
+        for i, label in enumerate(xlabels):
+            labeltext = label.get_text()
+            if labeltext in experiment["new_xlabels"]:
+                xlabels[i] = experiment["new_xlabels"][labeltext]   
+        axp.set_xticklabels(xlabels)  # we just replace them... 
+    else:
+        pass
+        #  print("no new x labels available")
+    if angle is not None:
+        axp.set_xticks(axp.get_xticks(), axp.get_xticklabels(), rotation=45, ha="right")
+
+def relabel_yaxes_threshold(axp):
+    ticksy = axp.get_yticklabels()
+    ticksy[-1].set_text(f"$>$90")
+    axp.set_yticklabels(ticksy)
+
+def place_legend(P, x, y, spacing=0.05, experiment=None):
+    legend_text = {}
+    lmap = experiment["group_legend_map"]
+    cols = experiment['plot_colors']
+    for l in lmap.keys():
+        legend_text[lmap[l]] = cols[l]
+
+    for i, txt in enumerate(legend_text.keys()):
+        mpl.text(
+            x=x,
+            y=y - i * spacing,
+            s=txt,
+            color=legend_text[txt],  # ns.color_palette()[i],
+            fontsize="medium",
+            transform=P.figure_handle.transFigure,
+        )
+
+        
+
+def plot_io_from_excel(
+    datasets: list,
+    groups: Union[list, None] = None,  # list of groups to analyze/plot
+    agerange: Union[list, tuple] = (30, 105),
+    coding: object = None,  # coding dataframe
+    picking: bool = False,
+    thrplot=False,
+):
     df0 = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
 
-    df_code = pd.read_excel("/Users/pbmanis/Desktop/Python/mrk-nf107-data/datasets/NF107Ai32_NIHL/NF107Ai32_NoiseExposure_Code.xlsx")
-    df_code = df_code[df_code.Group == 'B']
-    animal_ids = list(df_code.ID.values)
-    # print(len(animal_ids), animal_ids)
-
+    print("datasets: ", datasets)
+    print("Groups on call to plot_io_from_excel: ", groups)
+    ncols = 3
+    if thrplot:
+        ncols = 4
     top_path = df0.iloc[0].BasePath
-    PL = PH.regular_grid(rows=1, cols=3, figsize=(10, 4), horizontalspacing=0.1,
-        panel_labels=['A', 'B', 'C'], margins={"topmargin":0.12, "bottommargin":0.18, 'leftmargin': 0.08, 'rightmargin': 0.10},
-        labelposition=(-0.08, 1.05), )
+    PL = PH.regular_grid(
+        rows=1,
+        cols=ncols,
+        figsize=(10, 4),
+        horizontalspacing=0.1,
+        panel_labels=["A", "B", "C", "D"],
+        margins={"topmargin": 0.12, "bottommargin": 0.18, "leftmargin": 0.08, "rightmargin": 0.10},
+        labelposition=(-0.08, 1.05),
+    )
     # f, ax = mpl.subplots(1, 3, figsize=(9, 5))
     ax = PL.axarr.ravel()
 
@@ -1752,109 +2002,238 @@ def plot_io_from_excel(datasets:str, agerange:Union[list, tuple] = (30, 105)):
     markers = ["s", "o", "^", "D"]
     mfill = {"M": "full", "F": None}
 
-    grand_df = pd.DataFrame()
-    for k, Group in enumerate(datasets):
-        print("Group: ", Group)
-        df = pd.read_excel(Path(top_path, Group, f"ClickIO_{Group:s}.xlsx"))
+    grand_df = pd.DataFrame()  # make a new data frame with all datasets compiled into one
+    for k, dataset in enumerate(datasets):
+        excelfile = Path(top_path, dataset, f"ClickIO_{dataset:s}.xlsx")
+        df = pd.read_excel(Path(top_path, dataset, f"ClickIO_{dataset:s}.xlsx"))
+        df.rename(columns={"Animal_identifier": "Subject"}, inplace=True)
         # some data selection - by age, some data from a group, treatment
         df = df[(df.Age >= agerange[0]) & (df.Age <= agerange[1])]
-        # df = df[df.strain != 'FVB']
-        if Group == 'Tessa_BNE':  # just get the control animals from the noise exposure group
-            df = df[df['Animal_identifier'].isin(animal_ids)]
         df = df.loc[df.Treatment.isin([None, "UnExposed", np.nan])].reset_index()
         df = df.apply(_average, axis=1)
         grand_df = pd.concat((grand_df, df))
-       
-    p_df = reorganize_abr_data(Groups=datasets, abrdata=grand_df)
-    p_df.to_csv("reorganized_data.csv")
-    sns.lineplot(data=p_df, x="spls", y="ppio", hue='Group',  estimator=np.mean, errorbar="sd", ax=ax[0], linewidth=2.0, palette="colorblind")
-    sns.lineplot(data=p_df, x="spls", y="ppio", hue='Group', units='Subject', estimator=None, ax=ax[0], linewidth=0.3, alpha=0.5, palette="colorblind")
-        # ax.plot(spls, ppio, color=colors[k], marker=markers[k], fillstyle=mfill[sex], linestyle = '-')
+    p_df = reorganize_abr_data(
+        datasets=datasets, groups=groups, abr_data=grand_df, coding_data=coding
+    )
+    grand_df = set_groups(grand_df, coding_data=coding)
+    order = Experiment["plot_order"]["Group"]  # sort by group type
+    p_df.to_csv("reorganized_data.csv")  # just so we can look at it separately
+    p_df = p_df[p_df.group.isin(groups)]
+    print("p_df: ", p_df.group.unique())
+    print("order: ", order)
+    sns.lineplot(
+        data=p_df,
+        x="spls",
+        y="ppio",
+        hue="group",
+        hue_order=order,
+        estimator=np.mean,
+        errorbar="sd",
+        ax=ax[0],
+        linewidth=2.0,
+        # palette=Experiment['plot_colors'],
+    )
+    sns.lineplot(
+        data=p_df,
+        x="spls",
+        y="ppio",
+        hue="group",
+        hue_order=order,
+        units="Subject",
+        estimator=None,
+        ax=ax[0],
+        linewidth=0.3,
+        alpha=0.5,
+        # palette=Experiment['plot_colors'],
+    )
+    # ax.plot(spls, ppio, color=colors[k], marker=markers[k], fillstyle=mfill[sex], linestyle = '-')
     df = grand_df
     PH.nice_plot(ax[0], position=-0.03, direction="outward", ticklength=3)
     PH.referenceline(ax[0], 0.0)
     PH.set_axes_ticks(ax=ax[0], xticks=[20, 30, 40, 50, 60, 70, 80, 90])
     ax[0].set_ylabel(f"N1-P1 ($\mu V$)")
     ax[0].set_xlabel("Click (dB SPL)")
-    ax[0].set_xlim(20., 90.)
-    ax[0].set_ylim(-0.5, 10)
+    ax[0].set_xlim(20.0, 100.0)
+    ax[0].set_ylim(-0.5, 8)
 
     labels = {}
-    d_cba = df[df.Group == "Tessa_CBA"]
-    n_cba = len(set(d_cba.Subject.values))
-    labels['CBA'] = f"CBA (N={n_cba:d})"
-    d_fvb = df[df.Group == "Tessa_FVB"]
-    n_fvb = len(set(d_fvb.Subject.values))
-    labels['FVB'] = f"FVB (N={n_fvb:d})"
-    d_bne = df[df.Group == "Tessa_BNE"]
-    n_bne = len(set(d_bne.Subject.values))
-    labels['NF107::Ai32'] = f"NF107::Ai32 (N={n_bne:d})"
-    d_nf107 = df[df.Group== "Tessa_NF107"]
-    colors = sns.color_palette("colorblind")
+    d_gs = {}
+    n_gs = {}
+
+    for group in groups:
+        d_gs[group] = p_df[p_df.group == group]
+        n_gs[group] = len(set(d_gs[group].Subject.values))
+        labels[group] = f"{group:s} (N={n_gs[group]:d})"
+
     # print(colors)
-    custom_legend = [Line2D([0], [0], marker=None, color=colors[2], lw=2, label=labels['NF107::Ai32']),
-                     Line2D([0], [0], marker=None, color=colors[0], lw=2, label=labels['FVB']),
-                     Line2D([0], [0], marker=None, color=colors[1], lw=2, label=labels['CBA']),
-            ]
-    ax[0].legend(handles=custom_legend, handlelength=1, loc="upper left", fontsize=8, labelspacing=0.33, markerscale=0.5)
+    # custom_legend = []
+    # for i, l in enumerate(groups):
+    #     custom_legend.append(Line2D([0], [0], marker=None, color=colors[i], lw=2, label=labels[l]))
+
+    # ax[0].legend(
+    #     handles=custom_legend,
+    #     handlelength=1,
+    #     loc="upper left",
+    #     fontsize=8,
+    #     labelspacing=0.33,
+    #     markerscale=0.5,
+    # )
 
     # this plots thresholds from the initial analysis. Those thresholds can be incorrect.
     # sns.boxplot(data=grand_df, x="dataset", y="threshold", palette="colorblind", ax=ax[1])
 
-    # here we compute the SD of all curves for levels of 20 and 25dB SPL
+    # here we compute the SD of *all* curves for levels of 20 and 25dB SPL
+
     p_thr = p_df[p_df.spls <= 25.0]
-    baseline = 3.5*np.std(p_thr['ppio'].values)
-    print("baseline: ", baseline)
-    grand_df['interpolated_threshold'] = np.nan
-    grand_df['maxabr'] = np.nan
+    # print("   pthr: ", p_thr)
+    baseline = 3.5 * np.std(p_thr["ppio"].values)
+    # print("    baseline: ", baseline)
+    grand_df["interpolated_threshold"] = np.nan
+    grand_df["maxabr"] = np.nan
     grand_df = grand_df.apply(_compute_threshold, baseline=baseline, axis=1)
-    sns.swarmplot(data=grand_df, x="Group", y="interpolated_threshold", palette="colorblind", ax=ax[1])
-    ax[1].set_ylim(0, 90)
+    # print("Grand df columns: ", grand_df.columns)
+    # print("Grand df head: ", grand_df.head())
+    grand_df = grand_df[grand_df.group.isin(groups)]
+    print("hue order threshold: ", order)
+    if not picking:
+        sns.swarmplot(
+            data=grand_df,
+            x="group",
+            y="interpolated_threshold",
+            hue="group",
+            hue_order=order,
+            order=order,
+            ax=ax[1],
+            legend="auto",  # palette=Experiment['plot_colors'],
+            picker=False,
+            zorder=100,
+            clip_on=False,
+        )
+        sns.boxplot(
+            data=grand_df,
+            x="group",
+            y="interpolated_threshold",
+            hue="group",
+            hue_order=order,
+            order=order,
+            saturation=0.25,
+            orient="v",
+            showfliers=False,
+            linewidth=0.5,
+            zorder=50,
+            ax=ax[1],
+        )
+    else:
+        sns.scatterplot(
+            data=grand_df,
+            x="group",
+            y="interpolated_threshold",
+            hue="group",
+            hue_order=order,
+            order=order,
+            ax=ax[1],
+            legend=False,  # palette=Experiment['plot_colors'],
+            picker=True,
+            clip_on=False,
+        )
+
+    picker_func1 = Picker(space=2, data=grand_df.copy(deep=True), axis=ax[1])
+
+    PL.figure_handle.canvas.mpl_connect(
+        "pick_event", lambda event: pick_handler(event, picker_func1)
+    )
+    ax[1].set_ylim(0, 100)
     ax[1].set_ylabel("Threshold (dB SPL, interpolated)")
     PH.nice_plot(ax[1], position=-0.03, direction="outward", ticklength=3)
-    ax[1].set_xticklabels(['FVB/J', 'CBA/CaJ', "NF107::Ai32"])
-    ax[1].set_xlabel("Strain")
-    
-    sns.swarmplot(data=grand_df, x="Group", y="maxabr", palette="colorblind", ax=ax[2])
+    # ax[1].set_xticklabels(groups)
+    ax[1].set_xlabel("Treatment")
+    print("hue order, maxabr: ", order)
+    if not picking:
+        sns.swarmplot(
+            data=grand_df,
+            x="group",
+            y="maxabr",
+            hue="group",
+            hue_order=order,
+            order=order,
+            ax=ax[2],
+            legend="auto",  # palette=Experiment['plot_colors'],
+            picker=False,
+            zorder=100,
+            clip_on=False,
+        )
+        sns.boxplot(
+            data=grand_df,
+            x="group",
+            y="maxabr",
+            hue="group",
+            hue_order=order,
+            order=order,
+            saturation=0.15,
+            orient="v",
+            showfliers=False,
+            linewidth=0.5,
+            zorder=50,
+            ax=ax[2],
+        )
+    else:
+        sns.scatterplot(
+            data=grand_df,
+            x="group",
+            y="maxabr",
+            hue="group",
+            hue_order=order,
+            order=order,
+            ax=ax[2],
+            legend=False,  # palette=Experiment['plot_colors'],
+            picker=True,
+            clip_on=False,
+        )
+    picker_func2 = Picker(space=2, data=grand_df.copy(deep=True), axis=ax[2])
+    PL.figure_handle.canvas.mpl_connect(
+        "pick_event", lambda event: pick_handler(event, picker_func2)
+    )
     PH.nice_plot(ax[2], position=-0.03, direction="outward", ticklength=3)
-    ax[2].set_ylim(0, 10)
+    ax[2].set_ylim(0, 8)
     ax[2].set_ylabel("Maximum ABR ($\mu V$)")
-    ax[2].set_xticklabels(['FVB/J', 'CBA/CaJ', "NF107::Ai32"])
-    ax[2].set_xlabel("Strain")
- 
-    print(f"N CBA: {n_cba:d}   FVB: {n_fvb:d}  BNE: {n_bne:d}, NF107Ai32: {n_bne:d}")
+    # ax[2].set_xticklabels(groups)
+    ax[2].set_xlabel("Treatment")
 
-    # print("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
-    # some stats... 
+    for gs in groups:
+        print(f"N {labels[gs]}: {n_gs[gs]:d}")
+
+    if thrplot:
+        sns.scatterplot(
+            data=grand_df,
+            x="ExpSPL",
+            y="interpolated_threshold",
+            hue="group",
+            hue_order=order,
+            # order=order
+            ax=ax[3],
+            legend=False,  # palette=Experiment['plot_colors'],
+            picker=True,
+            clip_on=False,
+        )
+        picker_func3 = Picker(space=2, data=grand_df.copy(deep=True), axis=ax[2])
+        PL.figure_handle.canvas.mpl_connect(
+            "pick_event", lambda event: pick_handler(event, picker_func3)
+        )
+
+    relabel_xaxes(ax[1], Experiment, angle=45)
+    relabel_xaxes(ax[2], Experiment, angle=45)
+    relabel_yaxes_threshold(ax[1])
+    handles, previous_labels = ax[0].get_legend_handles_labels()
+    # ax.legend(handles=handles, labels=new_labels)
+    ax[0].legend(handles=handles, labels=[v for k, v in Experiment['new_xlabels'].items()], bbox_to_anchor=(0.59, 1.05))
+        #   bbox_transform=PL.figure_handle.transFigure,)
+        #   zorder=200)
+    # place_legend(PL, 0.85, 0.95, Experiment)
+    # rint("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
+    # some stats...
     # compute_io_stats(grand_df, Groups=datasets)
-    from scipy import stats
-    fvb = grand_df[grand_df.Group == 'Tessa_FVB']
-    cba = grand_df[grand_df.Group == 'Tessa_CBA']
-    bne = grand_df[grand_df.Group == 'Tessa_BNE']
-
-    U1 = stats.kruskal(fvb.interpolated_threshold,
-                      cba.interpolated_threshold,
-                      bne.interpolated_threshold)
-    post_U1 = scikit_posthocs.posthoc_dunn([fvb.interpolated_threshold,
-                                            cba.interpolated_threshold,
-                                            bne.interpolated_threshold],
-                                            p_adjust='bonferroni')
-    print("Kruskall-Wallis on Thresholds")
-    print(U1)
-    print("Post test Dunns with Bonferroni correction: ")
-    print(post_U1)
-    U2 = stats.kruskal(fvb.maxabr,
-                      cba.maxabr,
-                      bne.maxabr)
-    print("\nKruskall-Wallis on maximum ABR amplitude")
-    print(U2)
-    post_U2 = scikit_posthocs.posthoc_dunn([fvb.maxabr,
-                                            cba.maxabr,
-                                            bne.maxabr],
-                                            p_adjust='bonferroni')
-    print("Post test Dunns with Bonferroni correction: ")
-    print(post_U2)
-    mpl.savefig("/Users/pbmanis/Documents/Lab/Manuscripts-inProgress/SGC_NF107/ABR_fig.pdf")
+    # compute_other_stats(grand_df, groups=groups)
+    mpl.savefig("ABR_fig.pdf")
 
     mpl.show()
 
@@ -1863,12 +2242,18 @@ if __name__ == "__main__":
     # Say, "the default sans-serif font is COMIC SANS"
     import matplotlib
     from matplotlib import font_manager as FM
-    mpl.rcParams.update({
-    "text.usetex": True,
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Helvetica"]})
+
+    mpl.rcParams.update(
+        {"text.usetex": True, "font.family": "sans-serif", "font.sans-serif": ["Helvetica"]}
+    )
     myFont = FM.FontProperties(family="Arial", size=11)
-    
+
     # main()
     # analyze_from_excel(datasets= ['Tessa_BNE', 'Tessa_NF107Ai32', 'Tessa_CBA'])
-    plot_io_from_excel(datasets = ['Tessa_FVB', 'Tessa_CBA', 'Tessa_BNE'])
+
+    plot_io_from_excel(
+        datasets=["Tessa_BNE"],
+        groups=["B", "A", "AA", "AAA"],
+        coding=get_coding_data(Experiment),
+        picking=False,
+    )
