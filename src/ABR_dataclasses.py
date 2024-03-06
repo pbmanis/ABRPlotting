@@ -45,6 +45,7 @@ class Mouse_Info:
 
 @dataclass
 class ABR_Data:
+    config: Union[str, Path] = None  # the configuration file (if there is one)
     directory: Union[str, Path] = None # the path to the data
     subject: Union[str, Path] = None  # directory for the subject data
     invert: bool=False # if True, the polarity will be flipped
@@ -60,4 +61,22 @@ class ABR_Data:
     codefile: Union[str, None] = None  # name of file used to exctract "Code" information for subjects
     sample_freq: Union[float, None] = None # use non-default sample frequency
     spec_bandpass: Union[list, None] = None
+
+
+@dataclass
+class plotinfo:
+    """A data class to hold information about the plots (to be passed around)"""
+
+    P: object = None
+    Plot_waveforms: object = None
+    Plot_IO_functions: object = None
+    Plot_IO_overlay: object = None
+    IOax: object = None
+    m: int = 0
+    n: int = 0
+    subject_number: int = 0
+    nrows: int = 1
+    ncols: int = 1
+    axarr: object = None
+    axarr2: object = None
 

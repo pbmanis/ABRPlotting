@@ -11,12 +11,12 @@ then
 else
     echo "No previous environment - ok to proceed"
 fi
-python3.11 -m venv $ENVNAME || exit 1
+python3.10 -m venv $ENVNAME || exit 1
 source $ENVNAME/bin/activate || exit 1
 
 pip3 install --upgrade pip  # be sure pip is up to date in the new env.
 pip3 install wheel  # seems to be missing (note singular)
-pip3 install cython
+pip3 install Cython==3.0.8 || exit 1
 #
 pip3 install -r requirements_local.txt || exit 1
 

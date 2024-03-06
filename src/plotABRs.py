@@ -27,14 +27,12 @@ Animal_identifier, and the DataDirectory in ABRS.xlsx.
 Also, this assigns the "Group" field.
 
 """
+
 import ast
-import importlib
 import re
-import sys
-from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -51,713 +49,624 @@ from matplotlib.markers import MarkerStyle
 from mpl_toolkits.axes_grid1 import Divider, Size
 from statsmodels.formula.api import ols
 import pprint
-import pyqtgraph
-import src.abr_analyzer
-import src.ABR_dataclasses as ABRDC
-import src.ABRFuncs as ABRFuncs
-import src.getcomputer  # stub to return the computer and base directory
-from ABR_Datasets import ABR_Datasets  # just the dict describing the datasets
-from src.ABR_dataclasses import ABR_Data
-from src.get_configuration import get_configuration
-from pyqtgraph.Qt.QtCore import QObject
 
-# from ephys.tools import fitting  # use to fit hill function to IO curve.
+import src.abr_analyzer as abr_analyzer
+import src.abr_funcs as abr_funcs
+import src.abr_reader as ABR_Reader
+import src.make_colormaps as make_colormaps
+
+import ABR_Datasets  # just the dict describing the datasets
+from src.abr_dataclasses import ABR_Data
+from src.abr_dataclasses import plotinfo as PlotInfoDataclass
+from src.get_configuration import get_configuration
 
 pp = pprint.PrettyPrinter(indent=4)
 
-experiments = get_configuration("/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg")
-experimentnames = experiments[0]
-e = experimentnames.index("NF107Ai32_NIHL")
-experimentname = experiments[0][e]
-Experiment = experiments[1][experimentname]
 
-
-# basedir, computer_name = getcomputer.getcomputer()
-
-ABRF = ABRFuncs.ABRFuncs()
-
-
-@dataclass
-class plotinfo:
-    """A data class to hold information about the plots (to be passed around)"""
-
-    P: object = None
-    Plot_f: object = None
-    Plot_f2: object = None
-    Plot_f4: object = None
-    IOax: object = None
-    m: int = 0
-    n: int = 0
-    icol: int = 0
-    nrows: int = 1
-    ncols: int = 1
-    axarr: object = None
-    axarr2: object = None
+ABRF = abr_funcs.ABRFuncs()
 
 
 class PData(object):
-    def __init__(self, li_obj):
-        self.obj = li_obj
+    def __init__(self):
+        pass
 
-
-class ABR:
-    """
-    Read an ABR data set from the matlab program
-    Provides functions to plot the traces.
-    """
-
-    def __init__(
-        self,
-        datapath: Union[Path, str],
-        mode: str = "clicks",
-        info: object = ABRDC.ABR_Data(),
-        datasetname: str = "",
-        subject: str = "",
+    def analyze_one_subject_run(
+        self, subject_data, run, mode: str = "clicks", analyzer=None, freq: float = None
     ):
-        """
-        Parameters
-        ----------
-        datapath : str
-            Path to the datasets. The data sets are expected to be collected
-            under this path into individual directories, each with the results
-            of the ABR runs for one subject.
-        mode : string ('clicks' or 'tones')
-            Specify type of data in the data set
-        info : dict
-            Dictionary with the following keys:
-                invert : boolean (default : False)
-                    Changes sign of waveform if True
-                minlat : float (default 0.75)
-                    minimum latency for event detection
-                term : float (default '\r')
-                    line terminator (may change if the data has been read by an
-                    editor or is on a windows vs. mac vs linux system)
-        """
 
-        # Set some default parameters for the data and analyses
+        assert analyzer is not None
 
-        if info.sample_freq is not None:
-            self.sample_freq = info.sample_freq  # Hz
+        if mode == "clicks":
+            s_data = subject_data.clickdata[run]
+        elif mode == "tones":
+            s_data = subject_data.tonemapdata[run]
         else:
-            self.sample_freq = 100000.0
-
-        self.sample_rate = (
-            1.0 / self.sample_freq
-        )  # standard interpolated sample rate for matlab abr program: 10 microsecnds
-        if info.spec_bandpass is not None:
-            self.spec_bandpass = info.spec_bandpass
+            raise ValueError("mode must be 'clicks' or 'tones'")
+        data = s_data
+        if subject_data.subject is not None:
+            datatitle = f"{subject_data.subject:s}\nNE: {subject_data.SPL:5.1f} dBSPL"
         else:
-            self.spec_bandpass = [800.0, 1200.0]
-        if info.showdots:  # turn off dot plotting.
-            self.show_dots = info.showdots
-        else:
-            self.show_dots = True
-
-        self.df_excel = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
-        self.df_excel = self.df_excel[self.df_excel.Group == datasetname]
-
-        self.dev = 3.0  # should put this in the table
-        self.hpf = 500.0
-        self.lpf = 2500.0  # filter frequencies, Hz
-        self.mode = mode
-        self.info = info
-        self.clickdata = {}
-        self.tonemapdata = {}
-        # build color map where each SPL is a color (cycles over 12 levels)
-        bounds = np.linspace(0, 120, 25)  # 0 to 120 db inclusive, 5 db steps
-        color_labels = np.unique(bounds)
-        rgb_values = sns.color_palette("Set2", 25)
-        # Map label to RGB
-        self.color_map = dict(list(zip(color_labels, rgb_values)))
-
-        self.datapath = Path(datapath)
-        self.datasetname = datasetname
-
-        self.subject = (
-            subject  # this is the name of the directory that the data is in, not the full path
+            datatitle = f"{str(subject_data.datapath.parts[-1]):s}\n{run:s}"
+        thrs = {}
+        if mode == "clicks":
+            waves = data["waves"]
+            t = np.array(data["timebase"])
+            spls = data["spls"]
+        elif mode == "tones":
+            waves = data[freq]["waves"]
+            t = np.array(data[freq]["timebase"])
+            spls = data[freq]["spls"]
+        ppio = np.zeros(len(spls))
+        # Build a pandas dataframe to write a CSV file out.
+        columns = ["time"]
+        splnames = [f"{int(spl):d}" for spl in spls]
+        columns.extend(splnames)
+        waves_df = pd.DataFrame(columns=columns)
+        # print(waves_df.head())
+        waves_df["time"] = tuple(t)
+        for i, spln in enumerate(splnames):
+            waves_df[spln] = waves[i] * 1e6  # convert to microvolts for the CSV file
+        waves_df.to_csv(Path("ABR_CSVs", f"{str(subject_data.datapath.parts[-1]):s}" + ".csv"))
+        analyzer.analyze(t, waves, dev=subject_data.dev)
+        pnp = analyzer.p1n1p2
+        p1 = pnp["p1"]
+        n1 = pnp["n1"]
+        p2 = pnp["p2"]
+        tb = analyzer.set_baseline(timebase=t)
+        thr_spl, baseline_median_sd = analyzer.thresholds(  # A.threshold_spec(
+            timebase=t,
+            waves=waves,
+            spls=spls,
+            response_window=[2.0, 6.0],
+            baseline_window=tb,
+            SD=3.0,
+            # spec_bandpass=self.spec_bandpass,
         )
-        self.term = info.term
-        self.minlat = info.minlat
-        self.invert = (
-            info.invert
-        )  # data flip... depends on "active" lead connection to vertex (false) or ear (true).
+        if len(spls) > 2:
+            thr_spl, fit_data = fit_thresholds(spls, analyzer.ppio, baseline_median_sd)
 
-        # find the matching mouseinfo in the coding file if it exists
-        print("\nInfo: ", info)
-        if info.codefile is not None:
-            code_filename_full = Path("src", Path(info.codefile).name)
-            if code_filename_full.is_file():
-                code_filename = str(Path("src", Path(info.codefile).stem))
-                code_filename = code_filename.replace("/", ".")
-                CodeFile = importlib.import_module(code_filename)
-                print("Imported Codefile: ", CodeFile)
-                raise ValueError("Code files read this way are deprectated")
-        else:
-            CodeFile = None
-        # print("Codefile: ", CodeFile)
-        self.characterizeDataset(CodeFile)
+        thrs[run] = thr_spl
+        # halfspl = np.max(spls) / 2.0
 
-        # build color map where each SPL is a color (cycles over 12 levels)
-        self.max_colors = 25
-        bounds = np.linspace(0, 120, self.max_colors)  # 0 to 120 db inclusive, 5 db steps
-        color_labels = np.unique(bounds)
-        self.color_map = ABRF.makeColorMap(self.max_colors, color_labels)
-        color_labels2 = list(range(self.max_colors))
-        self.summaryClick_color_map = ABRF.makeColorMap(
-            self.max_colors, list(range(self.max_colors))
-        )  # make a default map, but overwrite for true number of datasets
-        self.psdIOPlot = False
-        self.superIOLabels = []
+        # generate a line demarcating the P1 (first wave)
+        latmap = []
+        spllat = []
+        fitline = np.nan * len(spls)
+        for j, spl in enumerate(spls):
+            if spl > thrs[run]:
+                latmap.append(t[p1[j][0]])  # get latency for first value
+                spllat.append(spl)
+        if len(latmap) > 2:
+            latp = np.polyfit(spllat, latmap, 1)
+            fitline = np.polyval(latp, spls)
+        result = {
+            "datatitle": datatitle,
+            "waves": waves,
+            "t": t,
+            "spls": spls,
+            "ppio": ppio,
+            "thrs": thrs,
+            "thr_spl": thr_spl,
+            "fitline": fitline,
+            "latmap": latmap,
+            "p1": p1,
+            "n1": n1,
+            "Analyzer": analyzer,
+        }
+        return result
 
-    def characterizeDataset(self, codefile=None):
-        """
-        Look at the directory in datapath, and determine what datasets are
-        present. A dataset consists of at least 3 files: yyyymmdd-HHMM-SPL.txt :
-        the SPL levels in a given run, with year, month day hour and minute
-        yyyymmdd-HHMM-{n,p}-[freq].txt : hold waveform data for a series of SPL
-        levels
-            For clicks, just click polarity - holds waveforms from the run
-            typically there will be both an n and a p file because we use
-            alternating polarities. For tones, there is also a number indicating
-            the tone pip frequency used.
+    def io_plot(
+        self,
+        ax: mpl.axes,
+        result: dict,
+        sf_cvt: float,
+        subject_data: ABR_Data,
+        subject_number: int,
+        sex_marker: str,
+        show_y_label: bool = True,
+        show_x_label: bool = True,
+    ):
+        # Plot an IO dataset to the selected axes
+        if ax is None:
+            return
+        spls = result["spls"]
+        ax.set_title(
+            result["datatitle"],
+            x=0.5,
+            y=1.0,
+            fontdict={"fontsize": 7, "ha": "center", "va": "bottom"},
+            transform=IOplot.transAxes,
+        )  # directory plus file
+        PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
+        PH.set_axes_ticks(
+            ax,
+            xticks=[0, 25, 50, 75, 100],
+            xticks_str=["0", "25", "50", "75", "100"],
+            yticks=range(0, 7),
+            yticks_str=[f"{y:d}" for y in range(0, 7)],
+            y_minor=0.5 + np.arange(0, 6),
+        )
 
-        The runs are stored in separate dictionaries for the click and tone map
-        runs, including their SPL levels (and for tone maps, frequencies).
+        ax.plot(
+            spls,
+            sf_cvt * result["A"].rms_baseline,
+            marker=result["A"].baselineMarker,
+            markersize=3,
+            color="grey",
+            label="RMS baseline",
+            alpha=0.35,
+            clip_on=False,
+        )
+        ax.plot(
+            spls,
+            sf_cvt * result["A"].ppio,
+            marker=sex_marker,  # A.ppioMarker,
+            markersize=3,
+            color=subject_data.summary_color_map[subject_number % subject_data.max_colors],
+            label="P-P",
+            clip_on=False,
+        )
 
-        Parameters
-        ----------
-        codefile
+        # ensure sqrt gets a >= 0 value. Sometimes the baseline noise is greater than
+        # the response window noise (below threshold).
+        y = result["A"].rms_response ** 2 - result["A"].rms_baseline ** 2
+        y[y < 0] = 0
 
-        Returns
-        -------
-        Nothing
-        """
+        ax.plot(
+            spls,
+            sf_cvt * np.sqrt(y),
+            marker=sex_marker,  # A.rmsMarker,
+            markersize=3,
+            color=subject_data.summary_color_map[subject_number % subject_data.max_colors],
+            label="RMS signal",
+            clip_on=False,
+        )
 
-        # x = ABRF.get_matlab()
-        self.spls = ABRF.getSPLs(self.datapath)
+        ax.set_ylim(0, 6.0)  # microvolts
+        if show_y_label:
+            label = r"ABR ($\mu V$)"
+            ax.set_ylabel(f"{label:s} (rms)")
+        if show_x_label:
+            ax.set_xlabel("Level (dBSPL)")
 
-        self.freqs = ABRF.getFreqs(self.datapath)
-        # print("self.spls: ", self.spls, self.datapath)
-        # A click run will consist of an SPL, n and p file, but NO additional files.
-        self.clicks = {}
-        for s in self.spls.keys():
-            if s not in list(self.freqs.keys()):  # skip SPL files associated with a tone map
-                self.clicks[s] = self.spls[s]
+        # if subject_data.psdIOPlot:
+        #     ax2 = IOplot.twinx()
+        #     ax2.plot(
+        #         spls,
+        #         result["A"].psdwindow,
+        #         marker=result["A"].psdMarker,
+        #         color="r",
+        #         label="PSD signal",
+        #         markersize=3,
+        #     )
+        #     ax2.tick_params("y", colors="r")
+        #     # if index == 0 and subject_number == 0:
+        #     #     handles, labels = IOplot.get_legend_handles_labels()
+        #     legend = IOplot.legend(loc="center left")
+        #     for label in legend.get_texts():
+        #         label.set_fontsize(6)
 
-        # inspect the directory and get a listing of all the tone and click maps
-        # that can be found.
-        self.tonemaps = {}
-
-        for i, f in enumerate(list(self.freqs.keys())):
-            self.tonemaps[f] = {
-                "stimtype": "tonepip",
-                "Freqs": self.freqs[f],
-                "SPLs": self.spls[f[:13]],
-            }
-            if self.mode == "tones":
-                if i == 0:
-                    print(f"  Frequency maps: ")
-                print(f"    {f:s} ", self.tonemaps[f])
-
-        self.clickmaps = {}
-
-        # print("click keys: ", self.clicks.keys())
-        for i, s in enumerate(list(self.clicks.keys())):
-            self.clickmaps[s] = {
-                "stimtype": "click",
-                "SPLs": self.spls[s],
-                "mouseinfo": None,
-            }
-            if self.mode == "clicks":
-                # if i == 0:
-                #     print("\n  Click Intensity Runs: ")
-                # print(f"    Run: {s:s}")
-                if codefile is not None:
-                    mouseinfo = codefile.find_clickrun(s)
-                    if mouseinfo is not None:
-                        self.clickmaps[s]["mouseinfo"] = mouseinfo
-                        # print(
-                        #     "        ",
-                        #     self.clickmaps[s],
-                        #     "Mouse ID: ",
-                        #     self.clickmaps[s]["mouseinfo"].ID,
-                        # )
-                else:
-                    print("        ", self.clickmaps[s], "NO Mouse ID: ")
-
-    def adjustSelection(self, select, tone=False):
-        """Clean up the list of files that will be processed.
-
-        Parameters
-        ----------
-        select : list
-            list of recordings
-        tone : bool, optional
-            Determine whether also dealing with tone files.
-            By default False
-
-        Returns
-        -------
-        select (list),
-        Freqs (list)
-
-        """
-        freqs = []
-        if select is None:
-            return select, freqs
-        for i, s in enumerate(select):
-            if s is None:
-                continue
-            # if isinstance(s, int):
-            #     select[i] = "%04d" % s  # convert to string
-            # if isinstance(s, str) and len(s) < 4:  # make sure size is ok
-            #     select[i] = "%04d" % int(s)
-            if tone:
-                base = list(self.tonemaps.keys())[0][:9]
-                for f in self.tonemaps[base + select[i]]["Freqs"]:
-                    if f not in freqs:
-                        freqs.append(f)
-        return select, freqs
-
-    def getClickData(self, select: str = "", directory: Union[Path, str] = None):
-        """
-        Gets the click data for the current selection The resulting data is held
-        in a dictionary structured as {mapidentity: dict of {waves, time, spls
-        and optional marker}
+    def plot_io_functions(
+        self,
+        ax,
+        subject_data,
+        run: str,
+        results: dict,
+        scale_factor: float = 1.0e-6,
+        stimtype: str = "clicks",
+        frequency: float = 1.0e3,
+        marker: str = "o",
+        color: str = "k",
+        group: str = None,
+        show_y_label: bool = True,
+        show_x_label: bool = True,
+    ):
+        """plot_io_functions Generate a plot of the input/output function for a single subject
 
         Parameters
         ----------
-        select : which data to select
-        directory : str
-            The directory of the data (used to set marker style)
-
+        ax : matplotlib.axis
+            plot axis into which the data will be plotted
+        subject_data : dataclass holding subject data
+            _description_
+        run : str
+            run identifier (e.g., 20180312_1422)
+        results : dict
+            results dictionary from the analysis
+        scale_factor : float, optional
+            factor to scale the data by, by default 1.0
+        stimtype : str, optional
+            stimulus type, by default "clicks"; could be "tones"
+        marker : str, optional
+            matplotlib marker to use for this plot, by default "o"
         """
-        select, freqs = self.adjustSelection(select)
-        # get data for clicks and plot all on one plot
-        self.clickdata = {}
-        markerstyle, group = ABRF.getMarkerStyle(directory=directory, markers=self.info.markers)
-        print("click maps: ", self.clickmaps.keys())
-        for i, s in enumerate(self.clickmaps.keys()):
-            if select is not None:
-                if s[9:] not in select:
-                    continue
-            print("working it")
-            waves, tb = self.get_combineddata(s, self.clickmaps[s], lineterm=self.term)
-            if waves is None:
-                print(f"Malformed data set for run {s:s}. Continuing")
-                continue
-            waves = waves[::-1]  # reverse order to match spls
+        assert stimtype in ["clicks", "tones"]
 
-            spls = self.clickmaps[s]["SPLs"]  # get spls
-            self.clickdata[s] = {
-                "waves": waves,
-                "timebase": tb,
-                "spls": spls,
-                "marker": markerstyle,
-                "group": group,
-                "mouseinfo": self.clickmaps[s]["mouseinfo"],
-            }
-            # print("Populated clickdata: ", self.clickdata[s])
+        if stimtype == "clicks":
+            if group is not None:
+                label = f"{group:s} ({subject_data.clickdata[run]['SPL']:5.1f})"
+            elif subject_data.clickdata[run]["Subject"] is not None:
+                label = f"{subject_data.clickdata[run]['Subject']:s} ({subject_data.clickdata[run]['SPL']:5.1f})"
+            else:
+                label = f"{str(subject_data.datapath.parts[-1]):s}\n{run:s}"
 
-    def getToneData(self, select, directory: str = ""):
+        elif stimtype == "tones":
+            freqs = list(subject_data.tonemapdata[run].keys())
+            if subject_data.tonemapdata[run][freqs[0]]["Subject"] is not None:
+                label = f"{subject_data.tonemapdata[run][freqs[0]]['Subject']:s} ({subject_data.tonemapdata[run][freqs[0]]['SPL']:5.1f})"
+            else:
+                label = f"{str(subject_data.datapath.parts[-1]):s}\n{run:s}"
+            label = f"{int(frequency):d} Hz"
+        spls = results["spls"]
+        ax.plot(
+            spls,
+            scale_factor * results["Analyzer"].ppio,
+            marker=marker,
+            linestyle="-",
+            linewidth=1.0,
+            color=color,
+            label=label,
+        )
+
+    def plot_waveforms(
+        self,
+        ax,
+        subject_data,
+        run: str,
+        results: dict,
+        scale_factor: float = 1e-6,
+        stimtype: str = "clicks",
+        frequency: float = 1.0e3,
+        marker: str = "o",
+        spl_color_map: dict = None,
+        freq_color_map: dict = None,
+        show_y_label: bool = True,
+        show_x_label: bool = True,
+        show_calbar: bool = True,
+    ):
+        """plot_waveforms _summary_
+
+        Parameters
+        ----------
+        ax : _type_
+            _description_
+        subject_data : _type_
+            _description_
+        run : str
+            _description_
+        results : dict
+            _description_
+        scale_factor : float, optional
+            _description_, by default 1e-6
+        stimtype : str, optional
+            _description_, by default "clicks"
+        marker : str, optional
+            _description_, by default "o"
+        spl_color_map : dict, optional
+            _description_, by default None
+        freq_color_map : dict, optional
+            _description_, by default None
+        show_y_label : bool, optional
+            _description_, by default True
+        show_x_label : bool, optional
+            _description_, by default True
+        show_calbar : bool, optional
+            _description_, by default True
         """
-        Gets the tone map data for the current selection The resulting data is
-        held in a dictionary structured as {mapidentity: dict of frequencies}
-        Where each dictoffrequencies holds a dict of {waves, time, spls and
-        optional marker}
+        sf = 20
+        if show_calbar:
+            # plot a calibration bar for the voltage traces
+            sf = 8
+            x = [7.5, 7.5]
+            y = np.array([0, 1e-6]) * sf * scale_factor + 105.0  # put at 105 dB...
+            ax.plot(x, y, linewidth=1.5)  # put 1 uV cal bar at highest sound level
+            ax.text(
+                x[0] + 0.1,
+                np.mean(y),
+                s=r"1 $\mu V$",
+                ha="left",
+                va="center",
+                fontsize=7,
+            )
 
-        """
-        self.tonemapdata = {}
-        select, freqs = self.adjustSelection(select, tone=True)
+        IO = np.zeros(len(results["spls"]))
 
-        # convert select to make life easier
-        # select list should have lists of strings ['0124', '0244'] or Nones...
-        markerstyle, group = ABRF.getMarkerStyle(directory=directory, markers=self.info.markers)
+        linewidth = 1.0
+        for j, spl in enumerate(results["spls"]):
+            if spl == results["thr_spl"]:  # highlight the threshold spl
+                ax.plot(
+                    results["t"],
+                    0 * results["waves"][j] * scale_factor + spl,
+                    color=[0.5, 0.5, 0.5, 0.4],
+                    linewidth=5,
+                )
+            if stimtype == "clicks":
+                c = spl_color_map[spl]
+            elif stimtype == "tones":
+                c = freq_color_map
+            ax.plot(
+                results["t"],
+                sf * results["waves"][j] * scale_factor + spl,
+                color=c,
+                linewidth=linewidth,
+            )
 
-        # iterate through the files in the directory, looking for tone maps
-        for i, s in enumerate(self.tonemaps.keys()):
-            freqs = []
-            if select is not None:
-                if s[9:] not in select:
-                    continue
+            if subject_data.show_dots:
+                for p in results["p1"][j]:
+                    ax.plot(
+                        results["t"][p],
+                        sf * results["waves"][j][p] * scale_factor + spl,
+                        "ro",
+                        markersize=2,
+                    )
+                for p in results["n1"][j]:
+                    ax.plot(
+                        results["t"][p],
+                        sf * results["waves"][j][p] * scale_factor + spl,
+                        "bo",
+                        markersize=2,
+                    )
+            if len(results["latmap"]) > 2 and subject_data.show_dots:
+                ax.plot(results["fitline"], results["spls"], "g-", linewidth=0.7)
+            # if len(result['latmap']) > 2 and subject_data.show_dots:
+            #     plottarget.plot(result['A'].p1_latencies[0], result['A'].p1_latencies[1], "g-", linewidth=0.7)
 
-            for f in self.tonemaps[s]["Freqs"]:
-                if f not in freqs:
-                    freqs.append(f)
-            freqs.sort()
-            if len(freqs) == 0:  # check of no tone pip ABR data in this directory
-                continue
-            # now we can build the tonemapdata
-            self.tonemapdata[s] = OrderedDict()
-            for fr in self.tonemaps[s]["Freqs"]:
-                waves, tb = self.get_combineddata(s, self.tonemaps[s], freq=fr)
-                if waves is None:
-                    print(f"Malformed data set for run {s:s}. Continuing")
-                    continue
+            if spl >= results["thr_spl"] or len(results["latmap"]) <= 2:
+                IO[j] = scale_factor * (
+                    results["waves"][j][results["p1"][j][0]]
+                    - results["waves"][j][results["n1"][j][0]]
+                )
+            else:
+                ti = int(results["fitline"][j] / (subject_data.sample_rate * 1000.0))
+                if ti < len(results["waves"][j]):
+                    IO[j] = scale_factor * results["waves"][j][ti]
 
-                spls = self.tonemaps[s]["SPLs"]
-                self.tonemapdata[s][fr] = {
-                    "waves": waves,
-                    "timebase": tb,
-                    "spls": spls,
-                    "marker": markerstyle,
-                    "group": group,
-                    "ID": self.clickmaps[s]["mouseinfo"].ID,
-                }
+        if show_y_label:
+            ax.set_ylabel("dBSPL")
+        if show_x_label:
+            ax.set_xlabel("T (ms)")
+        ax.set_xlim(0, 10.0)
+        ax.set_ylim(10.0, 115.0)
+        PH.set_axes_ticks(
+            ax,
+            xticks=[0, 2, 4, 6, 8, 10],
+            xticks_str=["0", "2", "4", "6", "8", "10"],
+            x_minor=np.arange(0, 10, 0.5),
+            yticks=[0, 40, 80, 120],
+            yticks_str=["0", "40", "80", "120"],
+            y_minor=[10, 20, 30, 50, 60, 70, 90, 100, 110],
+        )
+        ax.set_title(
+            results["datatitle"],
+            x=0.5,
+            y=0.90,
+            fontdict={"fontsize": 6, "ha": "center", "va": "bottom"},
+            transform=ax.transAxes,
+        )
 
     def plotClicks(
         self,
+        subject_data,
+        subject_number: int = 0,
         select: str = None,
+        configuration: dict = None,
         datadir: Union[Path, str] = None,
-        plottarget=None,
-        IOplot=None,
-        PSDplot=None,
-        superIOPlot=None,
-        colorindex: int = 0,
+        color_map: dict = None,
+        group_by: str = "group",
+        superimposed_io_plot=None,
         show_y_label: bool = True,  # for the many-paneled plots
         show_x_label: bool = True,
-    ) -> List:
-        """
-        Plot the click ABR intensity series for for one subject
-        one column per subject,
+        PSDplot: bool = False,
+        verbose=False,
+        do_individual_plots: bool = True,
+    ) -> Tuple[List, object]:
+        """plotClicks Generate plots of click ABRS for a SINGLE subject
+        Generates one figure with 2 subplots:
+        IO function (amplitude vs. SPL)
+        Stacked waveforms.
 
         Parameters
         ----------
-        select : list of str (default : None)
-            A list of the times for the datasets to plot for each subject. If
-            None, then all detected click ABR runs for that subject are
-            superimposed. The list looks like [['0115'], None, None]  - for each
-            directory in order.
+        subject_data : _type_
+            _description_
+        subject_number : int, optional
+            _description_, by default 0
+        select : str, optional
+            _description_, by default None
+        datadir : Union[Path, str], optional
+            _description_, by default None
+        color_map : dict, optional
+            _description_, by default None
+        show_y_label : bool, optional
+            _description_, by default True
+        verbose : bool, optional
+            _description_, by default False
 
-        plottarget : matplotlib axis object
-            The axis to plot the data into.
-
-        IOPlot : Matplotlib Axes object
-            Input output plot target. If not None, then use the specified
-            Mabplotlib Axes for the IO plot
-
-        PSDPlot : Matplotlib Axes object
-            Power spectral density plot target. If not None, then use the
-            specified Mabplotlib Axes for the plot
-
-        superIOPlot : Matplotlib Axes object
-            Input output plot target. If not None, then use the specified
-            Mabplotlib Axes for the IO plot
-
+        Returns
+        -------
+        List
+            _description_
         """
-        # grab the excel data row.
 
-        drow = self.df_excel[self.df_excel.Subject == self.subject]
-        if drow.Sex.values[0] == "M":
-            sex_marker = "x"
-        elif drow.Sex.values[0] == "F":
-            sex_marker = "o"
-        else:
-            sex_marker = "D"
-        A = abr_analyzer.Analyzer(sample_frequency=self.sample_freq)
-        thrs = {}
-        icol = colorindex
-        IO_DF = []  # build a dataframe of the IO funcitons from a list.
-        print("PLOT CLICKS: ", self.clickdata.keys())
-        for index, s in enumerate(list(self.clickdata.keys())):
+        self.click_io_plots: list = []  # save a list of the plots that are generated
+        self.abr_df = subject_data.abr_dataframe
+        drow = self.abr_df[self.abr_df.Subject == subject_data.subject]
+        sex_marker = "D"
+        if not pd.isnull(drow.Sex.values):
+            if drow.Sex.values[0] == "M":
+                marker = "x"
+                sex_marker = "x"
+            elif drow.Sex.values[0] == "F":
+                marker = "o"
+                sex_marker = "o"
+
+        spl_color_map, freq_colormap = make_colormaps.make_spl_freq_colormap()
+        if do_individual_plots:
+            self.click_io_plot = PH.regular_grid(1, 2, order="rowsfirst", figsize=(6, 3))
+        IO_DF = []
+        sf = 8
+        sf_cvt = 1e6
+        for index, run in enumerate(list(subject_data.clickdata.keys())):  # for all the click data
             # datatitle = datatitle.replace('_', '\_')  # if TeX is enabled, will need to escape the underscores
-            if self.clickdata[s]["mouseinfo"] is not None:
-                datatitle = f"{self.clickdata[s]['mouseinfo'].ID:s}\nNE: {self.clickdata[s]['mouseinfo'].SPL:5.1f} dBSPL"
+            result = self.analyze_one_subject_run(
+                subject_data,
+                run,
+                mode="clicks",
+                analyzer=abr_analyzer.Analyzer(sample_frequency=subject_data.sample_freq),
+            )
+            group_colormap = configuration["plot_colors"]
+            group_symbolmap = configuration["plot_symbols"]
+            if subject_data.group in group_colormap:
+                group_color = group_colormap[subject_data.group]
+                group_symbol = group_symbolmap[subject_data.group]
+
             else:
-                datatitle = f"{str(self.datapath.parts[-1]):s}\n{s:s}"
-            waves = self.clickdata[s]["waves"]
-            t = np.array(self.clickdata[s]["timebase"])
-            spls = self.clickdata[s]["spls"]
-            ppio = np.zeros(len(spls))
-            # Build a pandas dataframe to write a CSV file out.
-            columns = ["time"]
-            splnames = [f"{int(spl):d}" for spl in spls]
-            columns.extend(splnames)
-            waves_df = pd.DataFrame(columns=columns)
-            # print(waves_df.head())
-            waves_df["time"] = tuple(t)
-            for i, spln in enumerate(splnames):
-                waves_df[spln] = waves[i] * 1e6  # convert to microvolts for the CSV file
-            waves_df.to_csv(Path("ABR_CSVs", f"{str(self.datapath.parts[-1]):s}" + ".csv"))
-            A.analyze(t, waves, dev=self.dev)
-            print("A.thresholds: ", A.thresholds)
-            pnp = A.p1n1p2
-            p1 = pnp["p1"]
-            n1 = pnp["n1"]
-            p2 = pnp["p2"]
-            tb = A.set_baseline(timebase=t)
-            thr_spl = A.thresholds(  # A.threshold_spec(
-                waves,
-                spls,
-                response_window=[2.0, 6.0],
-                baseline_window=tb,
-                SD=3.0,
-                # spec_bandpass=self.spec_bandpass,
-            )
-            thrs[s] = thr_spl
-
-            halfspl = np.max(spls) / 2.0
-
-            # generate a line demarcating the P1 (first wave)
-            latmap = []
-            spllat = []
-            for j in range(len(spls)):
-                if spls[j] > thrs[s]:
-                    latmap.append(t[p1[j][0]])  # get latency for first value
-                    spllat.append(spls[j])
-            if len(latmap) > 2:
-                latp = np.polyfit(spllat, latmap, 1)
-                fitline = np.polyval(latp, spls)
-
-            linewidth = 1.0
-            IO = np.zeros(len(spls))
-            sf = 8
-            sf_cvt = 1e6
-            if index == 0:
-                # plot a calibration bar for the voltage traces
-                x = [7.5, 7.5]
-                y = np.array([0, 1e-6]) * sf * sf_cvt + 105.0  # put at 105 dB...
-                plottarget.plot(x, y, linewidth=1.5)  # put 1 uV cal bar at highest sound level
-                plottarget.text(
-                    x[0] + 0.1,
-                    np.mean(y),
-                    s=r"1 $\mu V$",
-                    ha="left",
-                    va="center",
-                    fontsize=7,
+                group_color = "grey"
+                group_symbol = "+"
+            # plot IO functions on standard plot, panel A
+            if do_individual_plots:
+                self.plot_io_functions(
+                    self.click_io_plot.axdict["A"],
+                    subject_data=subject_data,
+                    run=run,
+                    results=result,
+                    scale_factor=sf_cvt,
+                    stimtype="clicks",
+                    marker=marker,
+                    color=color_map[subject_data.subject],
+                    group=subject_data.group,
                 )
-            for j in range(len(spls)):
-                if spls[j] == thr_spl:  # highlight the threshold spl
-                    plottarget.plot(
-                        t,
-                        0 * waves[j] * sf_cvt + spls[j],
-                        color=[0.5, 0.5, 0.5, 0.4],
-                        linewidth=5,
-                    )
-                try:
-                    c = self.color_map[spls[j]]
-                    plottarget.plot(
-                        t,
-                        sf * waves[j] * sf_cvt + spls[j],
-                        color=c,
-                        linewidth=linewidth,
-                    )
-                except:
-                    plottarget.plot(
-                        t,
-                        sf * waves[j] * sf_cvt + spls[j],
-                        color="k",
-                        linewidth=linewidth,
-                    )
 
-                if self.show_dots:
-                    for p in p1[j]:
-                        plottarget.plot(
-                            t[p],
-                            sf * waves[j][p] * sf_cvt + spls[j],
-                            "ro",
-                            markersize=2,
-                        )
-                    for p in n1[j]:
-                        plottarget.plot(
-                            t[p],
-                            sf * waves[j][p] * sf_cvt + spls[j],
-                            "bo",
-                            markersize=2,
-                        )
-                # if len(latmap) > 2 and self.show_dots:
-                #     plottarget.plot(fitline, spls, "g-", linewidth=0.7)
-                if len(latmap) > 2 and self.show_dots:
-                    plottarget.plot(A.p1_latencies[0], A.p1_latencies[1], "g-", linewidth=0.7)
+                # plot a panel of voltage traces (standard plot, panel B)
+                self.plot_waveforms(
+                    self.click_io_plot.axdict["B"],
+                    subject_data=subject_data,
+                    run=run,
+                    results=result,
+                    scale_factor=sf_cvt,
+                    stimtype="clicks",
+                    marker="o",
+                    spl_color_map=spl_color_map,
+                    show_calbar=index == 0,
+                )
 
-                if spls[j] >= thr_spl or len(latmap) <= 2:
-                    IO[j] = sf_cvt * (waves[j][p1[j][0]] - waves[j][n1[j][0]])
-                else:
-                    ti = int(fitline[j] / (self.sample_rate * 1000.0))
-                    if ti < len(waves[j]):
-                        IO[j] = sf_cvt * waves[j][ti]
+            if superimposed_io_plot is None:  # need to build superimposed plot across subjects
+                print("Creating plot to superimpose IO functions")
+                sizer = {'A': {'pos': [0.08, 0.55, 0.08, 0.8]}, 'B': {'pos': [0.67, 0.25, 0.08, 0.8]}}
+                superimposed_io_plot = PH.arbitrary_grid(sizer=sizer ,order="rowsfirst", figsize=(8, 5.5))
+            
+            if subject_data.clickdata[run]["Subject"] is not None:
+                label = f"{subject_data.clickdata[run]['Subject']:s} {subject_data.clickdata[run]['strain']:s} ({subject_data.clickdata[run]['SPL']:5.1f})"
+            # elif group_by == "group":
+            #     label = f"{subject_data.clickdata[run]['group']:s}"
+            # elif group_by == "strain":
+            #     label = f"{subject_data.clickdata[run]['strain']:s} ({subject_data.clickdata[run]['SPL']:5.1f})"
+            else:
+                label = f"{str(subject_data.datapath.parts[-1]):s}\n{run:s}"
+            if label not in subject_data.superIOLabels:
+                subject_data.superIOLabels.append(label)
+            else:
+                label = None
 
-            if show_y_label:
-                plottarget.set_ylabel("dBSPL")
-            if show_x_label:
-                plottarget.set_xlabel("T (ms)")
-            plottarget.set_xlim(0, 10.0)
-            plottarget.set_ylim(10.0, 115.0)
+            superimposed_io_plot.axdict["A"].plot(
+                result["spls"],
+                sf_cvt * result["Analyzer"].ppio,
+                marker=group_symbol,  # sex_marker,
+                linestyle="-",
+                color=group_color,
+                label=label,
+            )
+
+            IO_DF.append(
+                [
+                    subject_data.subject,
+                    run,
+                    result["spls"],
+                    sf_cvt * result["Analyzer"].ppio,
+                    result["thrs"][run],
+                    subject_data.clickdata[run]["group"],
+                    subject_data.clickdata[run]["strain"],
+                ]
+            )
+
             PH.set_axes_ticks(
-                plottarget,
-                xticks=[0, 2, 4, 6, 8, 10],
-                xticks_str=["0", "2", "4", "6", "8", "10"],
-                x_minor=np.arange(0, 10, 0.5),
-                yticks=[0, 40, 80, 120],
-                yticks_str=["0", "40", "80", "120"],
-                y_minor=[10, 20, 30, 50, 60, 70, 90, 100, 110],
-            )
-            plottarget.set_title(
-                datatitle,
-                x=0.5,
-                y=1.00,
-                fontdict={"fontsize": 6, "ha": "center", "va": "bottom"},
-                transform=plottarget.transAxes,
-            )
-
-            if superIOPlot is not None:  # Plot superimposed IO curves
-                # datatitle_short = f"{str(self.datapath.parts[-1]):s}/{s:s}"
-                # if self.clickdata[s]["group"] not in self.superIOLabels:
-                #     self.superIOLabels.append(self.clickdata[s]["group"])
-                #     label = self.superIOLabels[-1]
-                # else:
-                # print("s: ", s)
-                # print(self.clickdata[s])
-                if self.clickdata[s]["mouseinfo"] is not None:
-                    label = f"{self.clickdata[s]['mouseinfo'].ID:s}({self.clickdata[s]['mouseinfo'].SPL:5.1f})"
-                else:
-                    label = f"{str(self.datapath.parts[-1]):s}\n{s:s}"
-                # if "ID" in self.clickdata[s]:
-                #     label = self.clickdata[s]["ID"]
-                # else:
-                #     label = s
-                self.superIOLabels.append(label)
-
-                superIOPlot.plot(
-                    spls,
-                    sf_cvt * A.ppio,
-                    marker=sex_marker,  # self.clickdata[s]["marker"],
-                    linestyle="-",
-                    color=self.summaryClick_color_map[icol % self.max_colors],
-                    label=label,
-                )
-                sr = datatitle.split("\n")
-                if len(sr) > 1:
-                    subjectID = sr[0]
-                    run = sr[1]
-                else:
-                    run = 0
-                    subjectID = datatitle
-                for i_level, spl in enumerate(spls):
-                    IO_DF.append(
-                        [
-                            subjectID,
-                            run,
-                            spl,
-                            sf_cvt * A.ppio[i_level],
-                            thrs[s],
-                            self.clickdata[s]["group"],
-                        ]
-                    )
-                    # IO_DF = [spls, (sf_cvt*A.ppio).tolist(), str(self.clickdata[s]["group"])]
-
-                # print out the data for import into another plotting program, such as Prism or Igor
-                print("*" * 20)
-                print(s)
-                print(f"dataset: {s:s}")
-                print("t\tV")
-                for i in range(len(spls)):
-                    print(f"{spls[i]:.1f}\t{IO[i]:.3f}")
-                print("*" * 20)
-
-            if IOplot is not None:  # generic io plot for cell
-                IOplot.set_title(
-                    datatitle,
-                    x=0.5,
-                    y=1.0,
-                    fontdict={"fontsize": 7, "ha": "center", "va": "bottom"},
-                    transform=IOplot.transAxes,
-                )  # directory plus file
-                PH.nice_plot(IOplot, position=-0.03, direction="outward", ticklength=3)
-                PH.set_axes_ticks(
-                    IOplot,
-                    xticks=[0, 25, 50, 75, 100],
-                    xticks_str=["0", "25", "50", "75", "100"],
-                    yticks=range(0, 7),
-                    yticks_str=[f"{y:d}" for y in range(0, 7)],
-                    y_minor=0.5 + np.arange(0, 6),
-                )
-
-                IOplot.plot(
-                    spls,
-                    sf_cvt * A.rms_baseline,
-                    marker=A.baselineMarker,
-                    markersize=3,
-                    color="grey",
-                    label="RMS baseline",
-                    alpha=0.35,
-                    clip_on=False,
-                )
-                IOplot.plot(
-                    spls,
-                    sf_cvt * A.ppio,
-                    marker=sex_marker,  # A.ppioMarker,
-                    markersize=3,
-                    color=self.summaryClick_color_map[icol % self.max_colors],
-                    label="P-P",
-                    clip_on=False,
-                )
-                IOplot.plot(
-                    spls,
-                    sf_cvt * np.sqrt(A.rms_response**2 - A.rms_baseline**2),
-                    marker=sex_marker,  # A.rmsMarker,
-                    markersize=3,
-                    color=self.summaryClick_color_map[icol % self.max_colors],
-                    label="RMS signal",
-                    clip_on=False,
-                )
-
-                IOplot.set_ylim(0, 6.0)  # microvolts
-                if show_y_label:
-                    IOplot.set_ylabel(f"ABR ($\mu V$)")
-                if show_x_label:
-                    IOplot.set_xlabel("Click level (dBSPL)")
-
-                if self.psdIOPlot:
-                    ax2 = IOplot.twinx()
-                    ax2.plot(
-                        spls,
-                        A.psdwindow,
-                        marker=A.psdMarker,
-                        color="r",
-                        label="PSD signal",
-                        markersize=3,
-                    )
-                    ax2.tick_params("y", colors="r")
-                if index == 0 and icol == 0:
-                    handles, labels = IOplot.get_legend_handles_labels()
-                    legend = IOplot.legend(loc="center left")
-                    for label in legend.get_texts():
-                        label.set_fontsize(6)
-
-            if PSDplot is not None:  # power spectral density
-                for j in range(len(spls)):
-                    PSDplot.semilogy(
-                        np.array(A.fr), np.array(A.psd[j])
-                    )  # color=self.color_map[spls])
-                PSDplot.set_ylim(1e-6, 0.01)
-                PSDplot.set_xlim(100.0, 2000.0)
-
-        if superIOPlot is not None:
-            PH.set_axes_ticks(
-                superIOPlot,
+                superimposed_io_plot.axdict["A"],
                 xticks=[0, 25, 50, 75, 100],
                 xticks_str=["0", "25", "50", "75", "100"],
                 yticks=range(0, 7),
                 yticks_str=[f"{y:d}" for y in range(0, 7)],
                 y_minor=0.5 + np.arange(0, 6),
             )
-            legend = superIOPlot.legend(loc="upper left")
-            for label in legend.get_texts():
-                label.set_fontsize(5)
-            if show_x_label:
-                superIOPlot.set_xlabel("Click level (dBSPL)")
-            if show_y_label:
-                superIOPlot.set_ylabel(f"ABR ($\mu V$)")
+        legend = superimposed_io_plot.axdict["A"].legend(ncol=4, loc="upper left")
+        for label in legend.get_texts():
+            label.set_fontsize(5)
+        if show_x_label:
+            superimposed_io_plot.axdict["A"].set_xlabel("Click level (dBSPL)")
+        if show_y_label:
+            label = r"ABR ($\mu V$)"
+            superimposed_io_plot.set_ylabel(f"{label:s} (V)")
+
+            sr = result["datatitle"].split("\n")
+            if len(sr) > 1:
+                subjectID = sr[0]
+                run = sr[1]
+            else:
+                run = 0
+                subjectID = result["datatitle"]
+            for i_level, spl in enumerate(result["spls"]):
+                IO_DF.append(
+                    [
+                        subjectID,
+                        run,
+                        spl,
+                        sf_cvt * result["Analyzer"].ppio[i_level],
+                        result["thrs"][s],
+                        subject_data.clickdata[s]["group"],
+                    ]
+                )
+                # IO_DF = [spls, (sf_cvt*A.ppio).tolist(), str(subject_data[s]["group"])]
+
+            # print out the data for import into another plotting program, such as Prism or Igor
+            if verbose:
+                print("*" * 20)
+                print(f"dataset: {run:s}")
+                print("t\tV")
+                for i, spl in enumerate(result["spls"]):
+                    print(f"{spl:.1f}\t{sf_cvt * result['Analyzer'].ppio[i]:.3f}")
+                print("*" * 20)
+
+            # generic io plot for cell
+            # self.io_plot(IOplot, result, sf_cvt, subject_data, subject_number,
+            #         sex_marker, show_y_label, show_x_label)
+
+            if PSDplot:  # power spectral density
+                for j, spl in enumerate(result["spls"]):
+                    PSDplot.semilogy(np.array(result["A"].fr), np.array(result["A"].psd[j]))
+                PSDplot.set_ylim(1e-6, 0.01)
+                PSDplot.set_xlim(100.0, 2000.0)
 
         print("-" * 40)
-        for s in list(thrs.keys()):
-            print(f"dataset: {s:s}  thr={thrs[s]:.0f}")
+        self.thrs = result["thrs"]
+        for s in list(self.thrs.keys()):
+            print(f"dataset: {s:s}  thr={self.thrs[s]:.0f}")
         print("-" * 40)
-        self.thrs = thrs
-        return IO_DF
 
-    def plotTones(self, select=None, pdf=None):
+        return IO_DF, superimposed_io_plot
+
+    def plotTones(
+        self,
+        subject_data,
+        subject_number: int = 0,
+        select: str = None,
+        datadir: Union[Path, str] = None,
+        color_map: dict = None,
+        IOplot=None,
+        PSDplot=None,
+        superimposed_io_plot=None,
+        show_y_label: bool = True,  # for the many-paneled plots
+        show_x_label: bool = True,
+        verbose=False,
+    ):
         """
         Plot the tone ABR intensity series, one column per frequency, for one
         subject
@@ -775,63 +684,100 @@ class ABR:
             multipage pdf, one page per subject.
 
         """
-        self.thrs = {}  # holds thresholds for this dataset
-        freqs = []
-        for run in list(self.tonemapdata.keys()):  # just passing one dict...
-            freqs.extend(list(self.tonemapdata[run].keys()))
-        freqs.sort()
-        if len(freqs) == 0:  # check of no tone pip ABR data in this directory
-            return
+        self.thrs = {}  # holds thresholds for this dataset, by frequency
+        IO_DF = []  # build a dataframe of the IO funcitons from a list.
+        spl_color_map, freq_colormap = make_colormaps.make_spl_freq_colormap()
+        Analyzer = abr_analyzer.Analyzer(sample_frequency=subject_data.sample_freq)
+        marker = "o"
+        sf_cvt = 1e6
+        self.tone_io_plot = PH.regular_grid(1, 2, order="rowsfirst", figsize=(6, 3))
+        for index, run in enumerate(list(subject_data.tonemapdata.keys())):
+            mapfreqs = subject_data.freqs[run]
+            thr_spls = 100.0 + np.zeros(len(mapfreqs))
+            for k, fr in enumerate(mapfreqs):  # next key is frequency
+                result = self.analyze_one_subject_run(
+                    subject_data,
+                    run,
+                    analyzer=Analyzer,
+                    mode="tones",
+                    freq=fr,
+                )
 
-        f, axarr = mpl.subplots(1, len(freqs), figsize=(12, 6), num="Tones")
-        datatitle = str(Path(self.datapath.parent, self.datapath.name))
-        datatitle = datatitle.replace("_", "\_")
-        f.suptitle(datatitle)
-        A = abr_analyzer.Analyzer()
-        if len(freqs) == 1:
-            axarr = [axarr]
-        for i, s in enumerate(self.tonemapdata.keys()):
-            if self.tonemapdata[s]["mouseinfo"] is not None:
-                datatitle = self.tonemapdata[s]["mouseinfo"].ID
-            else:
-                datatitle = f"{str(self.datapath.parts[-1]):s}\n{s:s}"
-            thr_spls = np.zeros(len(self.tonemaps[s]["Freqs"]))
-            for k, fr in enumerate(self.tonemaps[s]["Freqs"]):  # next key is frequency
-                if fr not in list(self.tonemapdata[s].keys()):
-                    continue
-                waves = self.tonemapdata[s][fr]["waves"]
-                t = self.tonemapdata[s][fr]["timebase"]
-                spls = self.tonemapdata[s][fr]["spls"]
-                A.analyze(t, waves, dev=self.dev)
-                print("spls: ", spls)
-                print("wave shape: ", waves.shape)
-                if waves.shape[0] <= 1:
-                    continue
+                # spl_list = [x[0] for x in Analyzer.p1n1p2_amplitudes]
+                # p1n1p2_list = [x[1] for x in Analyzer.p1n1p2_amplitudes]
+                # plot IO functions on standard plot, panel A
+                self.plot_io_functions(
+                    self.tone_io_plot.axdict["A"],
+                    subject_data=subject_data,
+                    run=run,
+                    results=result,
+                    scale_factor=sf_cvt,
+                    stimtype="tones",
+                    frequency=int(fr),
+                    marker=marker,
+                    color=freq_colormap[int(fr)],
+                )
+                # plot a panel of voltage traces (standard plot, panel B)
+                self.plot_waveforms(
+                    self.tone_io_plot.axdict["B"],
+                    subject_data=subject_data,
+                    run=run,
+                    results=result,
+                    scale_factor=sf_cvt,
+                    stimtype="tones",
+                    frequency=fr,
+                    marker="o",
+                    spl_color_map=spl_color_map,
+                    freq_color_map=freq_colormap[int(fr)],
+                    show_calbar=index == 0,
+                )
 
-                thr_spl = A.thresholds(waves, spls, SD=3.5)
-                thr_spls[k] = thr_spl
-                # print(dir(axarr))
-                plottarget = axarr[freqs.index(fr)]
-                for j in range(len(spls))[::-1]:
-                    if spls[j] == thr_spl:
-                        plottarget.plot(
-                            t,
-                            0 * waves[j] * 1e6 + spls[j],
+                for j, spl in enumerate(result["spls"]):
+                    if spl == thr_spls[k]:  # mark the threshold with a gray band
+                        self.tone_io_plot.axdict["B"].plot(
+                            result["t"],
+                            0 * result["waves"][j] * 1e6 + spl,
                             color=[0.5, 0.5, 0.5, 0.4],
                             linewidth=5,
                         )
-                    plottarget.plot(t, 4 * waves[j] * 1e6 + spls[j], color=self.color_map[spls[j]])
-                plottarget.set_xlim(0, 8.0)
-                plottarget.set_ylim(10.0, 110.0)
-                frtitle = "%.1f kHz" % (float(fr) / 1000.0)
-                plottarget.title.set_text(frtitle)
-                plottarget.title.set_size(9)
-            self.thrs[s] = [self.tonemaps[s]["Freqs"], thr_spls]
-        PH.cleanAxes(axarr)
-        legend = f.legend(loc="upper left")
-        if pdf is not None:
-            pdf.savefig()
-            mpl.close()
+                    # self.tone_io_plot.axdict["B"].plot(
+                    #     result["t"], 4 * result["waves"][j] * 1e6 + spl, color=spl_color_map[spl]
+                    # )
+                    IO_DF.append(
+                        [
+                            result["datatitle"],
+                            run,
+                            spl,
+                            fr,
+                            sf_cvt * result["ppio"][k],
+                            result["thrs"][run],
+                            subject_data.tonemapdata[run][fr]["group"],
+                        ]
+                    )
+                # plottarget.set_xlim(0, 8.0)
+                # plottarget.set_ylim(10.0, 110.0)
+                # frtitle = "%.1f kHz" % (float(fr) / 1000.0)
+                # plottarget.title.set_text(frtitle)
+                # plottarget.title.set_size(9)
+                # if fit_data is not None:
+                #     if i == 0:
+                #         iop, ioax = mpl.subplots(1, 1)
+                #     ioax.plot(spl_list, p1n1p2_list, "o", color=freq_colormap[fr])
+                #     ioax.plot(fit_data[0], fit_data[1], "--", color=freq_colormap[fr])
+                #     ioax.set_xlim(0, 100)
+                #     ioax.set_ylim(0, 5e-6)
+
+                # if fr not in self.thrs.keys():
+                #     self.thrs[fr] = [subject_data.tonemapdata[s][fr], thr_spls]
+                # else:  # repeat frequency, so add the threshold information
+                #     self.thrs[fr].append([subject_data.tonemapdata[s][fr], thr_spls])
+        PH.cleanAxes(self.tone_io_plot.axdict["A"])
+        legend = self.tone_io_plot.axdict["A"].legend(loc="upper left", fontsize=5)
+        return IO_DF, superimposed_io_plot
+        # mpl.show()
+        # if pdf is not None:
+        #     pdf.savefig()
+        #     mpl.close()
 
     def get_dataframe_clicks(self, allthrs):
         # use regex to parse information from the directory name
@@ -843,62 +789,80 @@ class ABR:
             r"(?P<sex>\_[MF]+[\d]{0,3}\_)"
         )  # typically, "F" or "M1" , could be "F123"
         re_age = re.compile(r"(?P<age>_P[\d]{1,3})")
-        re_date = re.compile("(?P<date>[\d]{2}-[\d]{2}-[\d]{4})")
+        re_date = re.compile(r"(?P<date>[\d]{2}-[\d]{2}-[\d]{4})")
         re_genotype_WT = re.compile(r"(?P<GT>_WT)")
         re_genotype_KO = re.compile(r"(?P<GT>_KO)")
         # put data in pd dataframe
         T = []
         # parse information about mouse, experiment, etc.
-        for i, d in enumerate(allthrs):
-            for m in allthrs[d]:
-                name = str(Path(d).name)
-                thr = allthrs[d][m]
-                exp = re_control.search(name)
-                if exp is not None:
-                    exposure = "control"
-                else:
-                    exposure = "exposed"
-                sham = re_sham_exposed.search(name)
-                if sham is not None:
-                    exposure = "sham"
-                unexposed = re_un_exposed.search(name)
-                if unexposed is not None:
-                    exposure = "unexposed"
-                exp = re_noise_exposed.search(name)
-                if exp is not None:
-                    exposure = "exposed"
-                sex = re_sex.search(name)
-                if sex is not None:
-                    sex = sex.groups()[0][1]
-                else:
-                    sex = "U"
-                age = re_age.search(name)
-                if age is not None:
-                    P_age = age.groups()[0][1:]
-                    day_age = int(P_age[1:])
-                else:
-                    P_age = "U"
-                    day_age = np.nan
-                Genotype = "ND"  # not defined
-                gtype = re_genotype_WT.search(name)
-                if gtype is not None:
-                    Genotype = gtype.groups()[0][1:]  # remove the underscore
-                gtype = re_genotype_KO.search(name)
-                if gtype is not None:
-                    Genotype = gtype.groups()[0][1:]
+        for i, dataset in enumerate(allthrs):
+            print("dataset keys: ", allthrs[dataset])
+            thrs = []
+            for run in allthrs[
+                dataset
+            ].thrs.keys():  # find lowest threshold for all click runs this dataset
+                thrs.append(allthrs[dataset].thrs[run])
+            thr = np.min(thrs)
+            # for m in allthrs[dataset]:
+            #     name = str(Path(dataset).name)
+            #     thr = allthrs[dataset][m]
+            #     exp = re_control.search(name)
+            #     if exp is not None:
+            #         exposure = "control"
+            #     else:
+            #         exposure = "exposed"
+            #     sham = re_sham_exposed.search(name)
+            #     if sham is not None:
+            #         exposure = "sham"
+            #     unexposed = re_un_exposed.search(name)
+            #     if unexposed is not None:
+            #         exposure = "unexposed"
+            #     exp = re_noise_exposed.search(name)
+            #     if exp is not None:
+            #         exposure = "exposed"
+            #     sex = re_sex.search(name)
+            #     if sex is not None:
+            #         sex = sex.groups()[0][1]
+            #     else:
+            #         sex = "U"
+            #     age = re_age.search(name)
+            #     if age is not None:
+            #         P_age = age.groups()[0][1:]
+            #         day_age = int(P_age[1:])
+            #     else:
+            #         P_age = "U"
+            #         day_age = np.nan
+            #     Genotype = "ND"  # not defined
+            #     gtype = re_genotype_WT.search(name)
+            #     if gtype is not None:
+            #         Genotype = gtype.groups()[0][1:]  # remove the underscore
+            #     gtype = re_genotype_KO.search(name)
+            #     if gtype is not None:
+            #         Genotype = gtype.groups()[0][1:]
 
-                meas = [name, thr, exposure, sex, P_age, day_age, Genotype]
-                T.append(meas)
+            # meas = [name, thr, exposure, Group, sex, P_age, day_age, Genotype]
+            print("thr: ", thr)
+            meas = [
+                dataset,
+                allthrs[dataset].coding.Subject,
+                thr,
+                allthrs[dataset].group,
+                allthrs[dataset].coding.sex,
+                allthrs[dataset].coding.age,
+                allthrs[dataset].coding.genotype,
+            ]
+
+            T.append(meas)
 
         df = pd.DataFrame(
             T,
             columns=[
+                "dataset",
                 "Subject",
                 "threshold",
-                "noise_exposure",
+                "Group",
                 "Sex",
-                "P_age",
-                "day_age",
+                "age",
                 "genotype",
             ],
         )
@@ -918,61 +882,85 @@ class ABR:
             r"(?P<sex>\_[MF]+[\d]{0,3}\_)"
         )  # typically, "F" or "M1" , could be "F123"
         re_age = re.compile(r"(?P<age>_P[\d]{1,3})")
-        re_date = re.compile("(?P<date>[\d]{2}-[\d]{2}-[\d]{4})")
+        re_date = re.compile(r"(?P<date>[\d]{2}-[\d]{2}-[\d]{4})")
         use_fr = [2.0, 4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0]
         # put data in pd dataframe
         T = []
+
         # parse information about mouse, experiment, etc.
-        for i, d in enumerate(allthrs):
-            for m in allthrs[d]:
-                for j in range(len(allthrs[d][m][0])):
-                    name = str(Path(d).parts[-1])
-                    fr = np.array(allthrs[d][m][0][j]) / 1000.0
-                    if fr not in use_fr:
-                        continue
-                    fr_jit = fr + np.random.uniform(-fr / 8, fr / 8)
-                    thr = allthrs[d][m][1][j]
-                    exp = re_control.search(name)
-                    if exp is not None:
-                        exposure = "control"
-                    else:
-                        exposure = "exposed"
-                    sham = re_sham_exposed.search(name)
-                    if sham is not None:
-                        exposure = "sham"
-                    unexposed = re_un_exposed.search(name)
-                    if unexposed is not None:
-                        exposure = "unexposed"
-                    exp = re_noise_exposed.search(name)
-                    if exp is not None:
-                        exposure = "exposed"
-                    sex = re_sex.search(name)
-                    if sex is not None:
-                        sex = sex.groups()[0][1]
-                    else:
-                        sex = "U"
-                    age = re_age.search(name)
-                    if age is not None:
-                        P_age = age.groups()[0][1:]
-                        day_age = int(P_age[1:])
-                    else:
-                        P_age = "U"
-                        day_age = np.nan
+        for i, dataset in enumerate(allthrs):
+            # print(allthrs[d])
+            # print(allthrs[d].group)
+            # print(allthrs[d].subject)
+            # print(dir(allthrs[d]))
+            # print("frequs: ", dataset, allthrs[d].freqs)
+            # print("spls: ", d, allthrs[d].spls)
+            # print("thrs: ", d, allthrs[d].thrs)
+            # print("tonemaps: ", d, allthrs[d].tonemaps)
 
-                    meas = [name, fr, fr_jit, thr, exposure, sex, P_age, day_age]
-                    T.append(meas)
+            # print('dataset: ', dataset)
+            for i, abr_map in enumerate(allthrs[dataset].tonemaps):
+                tone_map = allthrs[dataset].tonemaps[abr_map]  # 2 el list, freq, threshold
+                fr = np.array(allthrs[dataset].thrs[abr_map][0])
+                fr_jit = fr + np.random.uniform(-fr / 8, fr / 8)
+                thr = np.array(allthrs[dataset].thrs[abr_map][1])
+                #  uor j in range(len(allthrs[d][m][0])):
+                # name = str(Path(d).parts[-1])
+                # fr = np.array(allthrs[d][m][0][j]) / 1000.0
+                # if fr not in use_fr:
+                #     continue
+                # fr_jit = fr + np.random.uniform(-fr / 8, fr / 8)
+                # thr = allthrs[d][m][1][j]
+                # exp = re_control.search(name)
+                # if exp is not None:
+                #     exposure = "control"
+                # else:
+                #     exposure = "exposed"
+                # sham = re_sham_exposed.search(name)
+                # if sham is not None:
+                #     exposure = "sham"
+                # unexposed = re_un_exposed.search(name)
+                # if unexposed is not None:
+                #     exposure = "unexposed"
+                # exp = re_noise_exposed.search(name)
+                # if exp is not None:
+                #     exposure = "exposed"
+                # sex = re_sex.search(name)
+                # if sex is not None:
+                #     sex = sex.groups()[0][1]
+                # else:
+                #     sex = "U"
+                # age = re_age.search(name)
+                # if age is not None:
+                #     P_age = age.groups()[0][1:]
+                #     day_age = int(P_age[1:])
+                # else:
+                #     P_age = "U"
+                #     day_age = np.nan
 
+                meas = [
+                    dataset,
+                    allthrs[dataset].coding.Subject,
+                    fr,
+                    fr_jit,
+                    thr,
+                    allthrs[dataset].group,
+                    allthrs[dataset].coding.sex,
+                    allthrs[dataset].coding.age,
+                ]
+                T.append(meas)
         df = pd.DataFrame(
             T,
             columns=[
+                "dataset",
                 "Subject",
                 "Freq",
                 "Freq_jittered",
                 "threshold",
-                "noise_exposure",
+                # "noise_exposure",
+                "Group",
                 "Sex",
-                "P_age",
-                "day_age",
+                "Age",
             ],
         )
         df.to_pickle("tones_test.pkl")
@@ -1004,26 +992,29 @@ class ABR:
         df = self.get_dataframe_clicks(allthrs)
 
         # sns.stripplot(x="genotype", y="threshold", data=df, hue="Sex", kind="violin", ax=ax)
-
+        print("df: ", df.head())
+        # print(df.genotype.unique())
+        # print(df.threshold.unique())
+        # print(df.Sex.unique())
         sns.boxplot(
-            x="genotype",
+            x="group",  # "genotype",
             y="threshold",
-            hue=S,
+            hue="group",  # "Sex",
             data=df,
             whis=2.0,
             width=0.5,
             dodge=True,
             fliersize=0.15,
-            order=["WT", "KO"],
-            color=[0.85, 0.85, 0.85, 0.25],
+            # order=["WT", "KO"],
+            palette="dark:#d9d9d9",
             ax=ax,
         )
         sns.swarmplot(
-            x="genotype",
+            x="group",  # "genotype",
             y="threshold",
-            hue="Sex",
+            hue="group",  # "Sex",
             data=df,
-            order=["WT", "KO"],
+            # order=["WT", "KO"],
             ax=ax,
             dodge=True,
         )
@@ -1039,7 +1030,7 @@ class ABR:
         frstd = None
         return (thrs_sorted, frmean, frstd)
 
-    def plotToneThresholds(self, allthrs, name, show_lines: bool = True):
+    def plotToneThresholds(self, allthrs, abr_dataset, name, show_lines: bool = True):
         """
         Make a plot of the tone thresholds for all of the datasets Data are
         plotted against a log frequency scale (2-64kHz) Data is plotted into the
@@ -1077,163 +1068,53 @@ class ABR:
 
         df = self.get_dataframe_tones(allthrs)
 
-        sns.lineplot(
-            x="Freq",
-            y="threshold",
-            hue="noise_exposure",
-            data=df,
-            ax=ax,
-            err_style="band",
-            ci=68,
-        )
-        axs = sns.scatterplot(
-            x="Freq_jittered",
-            y="threshold",
-            hue="Subject",
-            data=df,
-            alpha=0.65,
-            ax=ax,
-            s=10,
-        )
-        axs.set_xscale("log", nonpositive="clip", base=2)
-        axs.set_xlim(1, 65)
-        axs.set_ylim(20, 100)
+        def get_group(row):
+            group = [row.subject]
+            row.Group = group
+            return
+
+        gcolors = {"B": "orange", "A": "blue", "AA": "green", "AAA": "brown"}
+        for g in df.Group.unique():
+            dg = df[df["Group"] == g]
+            for ig in dg.index:
+                ax.plot(
+                    dg.loc[ig, "Freq_jittered"] / 1000.0,
+                    dg.loc[ig, "threshold"],
+                    "o-",
+                    color=gcolors[g],
+                    alpha=0.5,
+                )
+                print(dg.loc[ig, "Freq"] / 1000.0, dg.loc[ig, "threshold"], g)
+            # sns.lineplot(
+            #     x="Freq",
+            #     y="threshold",
+            #     hue="Group",
+            #     data=dg,
+            #     ax=ax,
+            #     # err_style="band",
+            #     # errorbar=('ci', 68),
+            # )
+        # axs = sns.scatterplot(
+        #     x="Freq_jittered",
+        #     y="threshold",
+        #     hue="Subject",
+        #     data=df,
+        #     alpha=0.65,
+        #     ax=ax,
+        #     s=10,
+        # )
+        ax.set_xscale("log", nonpositive="clip", base=2)
+        ax.set_xlim(1, 65)
+        ax.set_ylim(20, 100)
 
         xt = [2.0, 4.0, 8.0, 16.0, 32.0, 48.0, 64.0]
         mpl.xticks(xt, [str(x) for x in xt])
         legend = ax.legend(bbox_to_anchor=(1.05, 1.0), loc="upper left", fontsize=7)
+        mpl.show()
         thrs_sorted = None
         frmean = None
         frstd = None
         return (thrs_sorted, frmean, frstd)
-
-    def get_combineddata(
-        self, datasetname, dataset, freq=None, lineterm="\r"
-    ) -> Tuple[np.array, np.array]:
-        """
-        Read the data sets and combine the p (condensation) and n
-        (rarefaction) data sets for alternating polarity stimuli.
-
-        Parameters
-        ----------
-        datasetname : str
-            yyyymmdddd-time format for start of dataset name
-        dataset : dict
-            dictionary for the dataset that identifies the stimulus type, the
-            SPLs in the dataset, and the frequency if the dataset is a tone pip
-            run
-        freq : float (default: None)
-            for tone maps, the specific frequency intensity series to return
-
-        lineterm: str (default: '\r')
-            line terminator for this dataset
-
-        Returns
-        -------
-        waves : numpy array
-            Waveforms, as a nxm array, where n is the number of intensities, and
-            m is the length of each waveform
-        tb: numpy array for the time base
-
-        """
-        if dataset["stimtype"] == "click":
-            fnamepos = datasetname + "-p.txt"
-            fnameneg = datasetname + "-n.txt"
-            try:
-                waves, tb = self.read_dataset(self.datapath, "click", fnamepos, fnameneg, lineterm)
-            except:
-                print("Failed on datasetname: ", datasetname)
-                print(" with dataset: ", dataset)
-                raise ValueError()
-            return waves, tb
-        if dataset["stimtype"] == "tonepip":
-            fnamepos = datasetname + "-p-%.3f.txt" % freq
-            fnameneg = datasetname + "-n-%.3f.txt" % freq
-            waves, tb = self.read_dataset("tonepip", fnamepos, fnameneg, lineterm)
-            return waves, tb
-
-    def read_dataset(
-        self,
-        datapath: Union[Path, str],
-        datatype: str = "click",
-        fnamepos: str = "",
-        fnameneg: str = "",
-        lineterm="\r",
-    ):
-        """
-        Read a dataset, combining the positive and negative recordings,
-        which are stored in separate files on disk. The waveforms are averaged
-        which helps to minimize the CAP contribution.
-        The waveforms are then bandpass filtered to remove the low frequency
-        "rumble" and excess high-frequency noise.
-
-        Parameters
-        ----------
-        fnamepos : str
-             name of the positive (condensation) file
-        fnameneg : str
-            name of the negative (rarefaction) file
-        lineterm: str
-            line terminator used for this file set
-
-        Returns
-        -------
-        waveform
-            Waveform, as a nxm array, where n is the number of intensities,
-            and m is the length of each waveform
-        timebase
-
-        """
-        # handle missing files.
-        if not Path(datapath, fnamepos).is_file():
-            return None, None
-        if not Path(datapath, fnameneg).is_file():
-            return None, None
-        print("Reading from: ", str(Path(datapath, fnamepos)))
-        if datatype == "click":
-            spllist = self.clickmaps[fnamepos[:13]]["SPLs"]
-        else:
-            spllist = self.tonemaps[fnamepos[:13]]["SPLs"]
-        cnames = [f"{spl:.1f}" for i, spl in enumerate(spllist)]
-        posf = pd.io.parsers.read_csv(
-            Path(datapath, fnamepos),
-            sep=r"[\t ]+",
-            lineterminator=r"[\r\n]+",  # lineterm,
-            skip_blank_lines=True,
-            header=None,
-            names=cnames,
-            engine="python",
-        )
-        negf = pd.io.parsers.read_csv(
-            Path(datapath, fnameneg),
-            sep=r"[\t ]+",
-            lineterminator=r"[\r\n]+",
-            skip_blank_lines=True,
-            header=None,
-            names=cnames,
-            engine="python",
-        )
-        npoints = len(posf[cnames[0]])
-        tb = np.linspace(0, npoints * self.sample_rate * 1000.0, npoints)
-        if np.max(tb) > 25.0:
-            u = np.where(tb < 25.0)
-            tb = tb[u]
-        npoints = tb.shape[0]
-
-        waves = np.zeros((len(posf.columns), npoints))
-
-        for i, cn in enumerate(posf.columns):
-            waves[i, :] = (posf[cn][:npoints] + negf[cn][:npoints]) / 2.0
-
-        for i in range(waves.shape[0]):
-            # waves[i, -1] = waves[i, -2]  # remove nan from end of waveform...
-            waves[i, :] = ABRF.filter(
-                waves[i, :], 4, self.lpf, self.hpf, samplefreq=self.sample_freq
-            )
-            if self.invert:
-                waves[i, :] = -waves[i, :]
-
-        return waves, tb
 
 
 ###
@@ -1241,7 +1122,7 @@ class ABR:
 ###
 
 
-def build_click_plot(nplots=1):
+def build_click_grid_plot(nplots=1):
     m, n = PH.getLayoutDimensions(nplots)
     # print("Grid: ", m, n)
     # print("dirs: ", dirs)
@@ -1251,7 +1132,7 @@ def build_click_plot(nplots=1):
         if h > 10.5:
             h = 10.5
     else:
-        h = 3
+        h = 4
     horizontalspacing = 0.08
     if n > 5:
         horizontalspacing = 0.08 / (n / 5.0)
@@ -1263,8 +1144,8 @@ def build_click_plot(nplots=1):
         n,
         order="rowsfirst",
         figsize=(11, h),
-        verticalspacing=0.04,
-        horizontalspacing=0.04,
+        verticalspacing=0.06,
+        horizontalspacing=0.06,
     )
     if Plot_f.axarr.ndim > 1:
         axarr = Plot_f.axarr.ravel()
@@ -1310,13 +1191,13 @@ def build_click_plot(nplots=1):
     IOax = Plot_f4.axarr.ravel()
     for ax in Plot_f4.axarr:
         PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
-    PlotInfo = plotinfo(
+    PlotInfo = PlotInfoDataclass(
         m=m,
         n=n,
-        icol=0,
-        Plot_f=Plot_f,
-        Plot_f2=Plot_f2,
-        Plot_f4=Plot_f4,
+        subject_number=0,
+        Plot_waveforms=Plot_f,
+        Plot_IO_functions=Plot_f2,
+        Plot_IO_overlay=Plot_f4,
         IOax=IOax,
         axarr=axarr,
         axarr2=axarr2,
@@ -1324,35 +1205,175 @@ def build_click_plot(nplots=1):
     return PlotInfo
 
 
-def populate_plot(P, select, datadir, plot_info: object, plot_index: int, icol: int):
-    xlab = False
-    ylab = False
-    if plot_info.nrows == plot_info.m - 1:
-        xlab = True
-    if plot_info.ncols == 0:
-        ylab = True
-    IOdata = P.plotClicks(
-        select=select,
-        datadir=datadir,
-        plottarget=plot_info.axarr[plot_index],
-        superIOPlot=plot_info.IOax[0],
-        IOplot=plot_info.axarr2[plot_index],
-        colorindex=icol,
-        show_x_label=xlab,
-        show_y_label=ylab,
+def build_tone_plot_grid(nplots=1):
+    m, n = PH.getLayoutDimensions(nplots)
+    # grid is based on the number of subects with data
+    print("Toneplot Grid: ", m, n, nplots)
+    # print("dirs: ", dirs)
+
+    if m > 1:
+        h = 2.5 * m
+        if h > 10.5:
+            h = 10.5
+    else:
+        h = 4
+    horizontalspacing = 0.08
+    if n > 5:
+        horizontalspacing = 0.08 / (n / 5.0)
+    print("Plot array and count: ", m, n, nplots)
+
+    # generate plot grid for waveforms
+    Plot_waveforms = PH.regular_grid(
+        m,
+        n,
+        order="rowsfirst",
+        figsize=(11, h),
+        verticalspacing=0.06,
+        horizontalspacing=0.06,
+    )
+    if Plot_waveforms.axarr.ndim > 1:
+        axarr_waveforms = Plot_waveforms.axarr.ravel()
+    else:
+        axarr_waveforms = Plot_waveforms.axarr
+
+    for ax in Plot_waveforms.axarr:
+        PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
+
+    # generate plot grid for individual IO functions
+    Plot_IO_functions = PH.regular_grid(
+        m,
+        n,
+        order="rowsfirst",
+        figsize=(11, h),
+        verticalspacing=0.04,
+        horizontalspacing=0.04,
+    )
+    for ax in Plot_IO_functions.axarr:
+        PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
+    if Plot_IO_functions.axarr.ndim > 1:
+        axarr_IO_functions = Plot_IO_functions.axarr.ravel()
+    else:
+        axarr_IO_functions = Plot_IO_functions.axarr
+
+    # generate plot space for tone IO overlay and threshold summary on right
+    Plot_IO_overlay = PH.regular_grid(
+        1,
+        2,
+        order="rowsfirst",
+        figsize=(8, 5),
+        verticalspacing=0.07,
+        horizontalspacing=0.125,
+        margins={
+            "bottommargin": 0.15,
+            "leftmargin": 0.1,
+            "rightmargin": 0.05,
+            "topmargin": 0.08,
+        },
+        num="Click IO Overlay",
     )
 
-    return IOdata
+    IOax = Plot_IO_overlay.axarr.ravel()
+    for ax in Plot_IO_overlay.axarr:
+        PH.nice_plot(ax, position=-0.03, direction="outward", ticklength=3)
+    PlotInfo = PlotInfoDataclass(
+        m=m,
+        n=n,
+        subject_number=0,
+        Plot_waveforms=Plot_waveforms,
+        Plot_IO_functions=Plot_IO_functions,
+        Plot_IO_overlay=Plot_IO_overlay,
+        IOax=IOax,
+        axarr=axarr_waveforms,
+        axarr2=Plot_IO_functions,
+    )
+    return PlotInfo
+
+
+def populate_io_plot(
+    subject_data,
+    select,
+    datadir,
+    plot_index: int,
+    subject_number: int,
+    configuration: dict = None,
+    group_by: str = "group",
+    superimposed_io_plot: object = None,
+    mode: str = "clicks",
+    color_map: list = ["r", "b"],
+    do_individual_plots: bool = True,
+):
+    """populate_io_plot _summary_
+
+    Parameters
+    ----------
+    subject_data : _type_
+        _description_
+    select : _type_
+        _description_
+    datadir : _type_
+        _description_
+    plot_index : int
+        _description_
+    subject_number : int
+        _description_
+    group_by : str, optional
+        color the data by groups: "group", "strain", "subject"
+    superimposed_io_plot : object, optional
+        _description_, by default None
+    mode : str, optional
+        _description_, by default "clicks"
+    color_map : list, optional
+        _description_, by default ["r", "b"]
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    xlab = False
+    ylab = False
+
+    if mode == "clicks":
+        IOdata, superimposed_io_plot = PData().plotClicks(
+            subject_data,
+            select=select,
+            datadir=datadir,
+            configuration=configuration,
+            subject_number=subject_number,
+            group_by=group_by,
+            superimposed_io_plot=superimposed_io_plot,
+            color_map=color_map,
+            show_x_label=xlab,
+            show_y_label=ylab,
+            do_individual_plots=do_individual_plots,
+        )
+    elif mode == "tones":
+        IOdata, superimposed_io_plot = PData().plotTones(
+            subject_data,
+            select=select,
+            datadir=datadir,
+            subject_number=subject_number,
+            superimposed_io_plot=superimposed_io_plot,
+            color_map=color_map,
+            show_x_label=xlab,
+            show_y_label=ylab,
+        )
+
+    return IOdata, superimposed_io_plot
 
 
 def do_clicks(
     dsname: str,
-    top_directory: Union[str, Path],
-    dirs: list,
-    ABR_Datasets: object = None,
+    ABR_Datasets: dict = None,
+    configuration: dict = None,
+    coding: pd.DataFrame = None,
+    group_by: str = "group",
+    top_directory: Union[str, Path] = None,
+    dirs: list = None,
     plot_info: object = None,
     nplots: int = 1,
     plot_index: int = 0,
+    do_individual_plots: bool = True,
 ):
     """analyze the click data
 
@@ -1369,88 +1390,152 @@ def do_clicks(
         click data.
     """
 
-    clicksel = ABR_Datasets[dsname].clickselect
     if len(dirs) == 0:
         CP.cprint("r", f"No Directories found: {str(dsname):s}, {str(top_directory):s}")
         return plot_info, None
-    if plot_info is None:
-        plot_info = build_click_plot(nplots)
+    # if plot_info is None:
+    #     plot_info = build_click_plot(nplots)
     # do analysis and plot, and accumulate thresholds while doing so.
-    nsel = len(clicksel)
     allthrs = {}
     IO_DF = []
+    abr_dataframe = ABR_Reader.get_ABR_Dataset(datasetname=dsname, configuration=configuration)
 
-    print("do_clicks: ", dirs)
-    for icol, k in enumerate(range(len(dirs))):  # list_order):
-        P = ABR(
-            Path(top_directory),
-            "clicks",
+    clicksel = {}
+    subjects = set(abr_dataframe.Subject)
+    # print("Subjects: ", subjects)
+    match group_by:
+        case "subjects":
+            color_map = make_colormaps.make_subject_colormap(subjects)
+        case "groups":
+            color_map = make_colormaps.make_group_colormap(abr_dataframe.Group)
+        case "strain":
+            color_map = make_colormaps.make_group_colormap(abr_dataframe.strain)
+
+    superimposed_io_plot = None
+    for subject_number, subject in enumerate(subjects):
+        Group = coding[coding.Subject == subject].Group.values[0]
+        subject_data = ABR_Reader.ABR_Reader()
+        subject_data.setup(
+            datapath=Path(top_directory),
+            configuration=configuration,
+            mode="clicks",
             info=ABR_Datasets[dsname],
             datasetname=dsname,
-            subject=ABR_Datasets[dsname].subject,
+            abr_dataframe=abr_dataframe,
+            subject=subject,
+            group=Group,
+            sex=coding[coding.Subject == subject].sex.values[0],
+            age=coding[coding.Subject == subject].age.values[0],
         )
-        CP.cprint(
-            "r",
-            P.df_excel[P.df_excel.Subject == ABR_Datasets[dsname].subject].Sex.values,
-        )
+        if subject_data.error:
+            continue  # skip this directory - probably none defined
+        runs = subject_data.abr_subject.Runs
+        if len(runs) == 0:
+            continue
+        # print("runs: ", runs.values[0])
+        clicksel[subject] = [
+            x.split(":")[1] for x in runs.values[0].split(",") if x.strip().startswith("click:")
+        ]
+        # print("clicksel: ", clicksel[subject])
+        nsel = 32
+        if subject_number == 0:
+            subject_data.summary_color_map = ABRF.makeColorMap(nsel, list(range(nsel)))
 
-        if icol == 0:
-            P.summaryClick_color_map = ABRF.makeColorMap(nsel, list(range(nsel)))
-        print("doClicks: Getting Click data with : ", clicksel[k], dirs[k], dsname)
-        P.getClickData(select=clicksel[k], directory=dirs[k])
-        IOdata = populate_plot(
-            P,
-            clicksel[k],
+        # print("doClicks: Getting Click data with : ", clicksel[subject], P.datadir, dsname)
+        subject_data.getClickData(
+            select=clicksel[subject], directory=subject_data.datadir, configuration=configuration
+        )
+        IOdata, superimposed_io_plot = populate_io_plot(
+            subject_data,
+            clicksel[subject],
+            mode="clicks",
+            configuration=configuration,
             datadir=dsname,
-            plot_info=plot_info,
             plot_index=plot_index,
-            icol=icol,
+            subject_number=subject_number,
+            group_by=group_by,
+            color_map=color_map,
+            superimposed_io_plot=superimposed_io_plot,
+            do_individual_plots=do_individual_plots,
         )
-        print("Threshold: ", P.thrs)
-        dirname = str(Path(dirs[k]).name)
-        allthrs[dirname] = P.thrs
+        dirname = str(Path(subject_data.datadir).name)
+        allthrs[dirname] = subject_data
         IO_DF.extend(IOdata)
-        plot_info.icol = icol
 
-    clickIODF = pd.DataFrame(IO_DF, columns=["Subject", "run", "spl", "ppio", "thrs", "Group"])
+    clickIODF = pd.DataFrame(IO_DF, columns=["Subject", "run", "spl", "ppio", "thrs", "Group", "strain"])
     clickIODF["group_cat"] = clickIODF["Group"].astype("category")
-    fill_circ = MarkerStyle("o", fillstyle="full")
-    fill_square = MarkerStyle("s", fillstyle="full")
-    if plot_info.IOax[0] is not None:
-        sns.lineplot(
-            x="spl",
-            y="ppio",
-            hue="group_cat",  # style="group_cat",
+    filled_circle = MarkerStyle("o", fillstyle="full")
+    filled_square = MarkerStyle("s", fillstyle="full")
+ 
+    if superimposed_io_plot is not None:
+        # superimposed_io_plot.axdict['B'].plot(clickIODF["spl"], clickIODF["thrs"], "o", color="black")
+        sns.boxplot(
+            x="Group",
+            y="thrs",
+            hue='group_cat',
+            order = configuration['plot_order']["Group"],
             data=clickIODF,
-            ax=plot_info.IOax[0],
-            hue_order=["WT", "KO"],
-            markers=False,  # [fill_circ, fill_square],
-            err_style="band",
-            errorbar="sd",
-            err_kws={"alpha": 0.8, "linewidth": 0.75},
-            mew=1.0,
-            linewidth=1.5,
-            markersize=1,
+            ax = superimposed_io_plot.axdict['B'],
+            whis=[5, 95],
         )
+        smarkers = {"VGAT": 'o', 'GlyT2': 's'}
+        for s in clickIODF['strain'].unique():
+            sns.stripplot(
+                x="Group",
+                y="thrs",
+                hue='group_cat',
+                order = configuration['plot_order']["Group"],
+                data=clickIODF[clickIODF['strain'] == s],
+                marker=smarkers[s],
+                ax = superimposed_io_plot.axdict['B'],
+                linewidth=0.5,
+                edgecolor="black",
+            )
+        # sns.lineplot(
+        #     x="spl",
+        #     y="ppio",
+        #     # hue="group_cat",
+        #     data=clickIODF,
+        #     ax=superimposed_io_plot.axdict['B'],
+        #     # hue_order=list(configuration['plot_symbols'].keys()),
+        #     # markers=False,  # [fill_circ, fill_square],
+        #     # err_style="band",
+        #     # errorbar="sd",
+        #     # err_kws={"alpha": 0.8, "linewidth": 0.75},
+        #     # mew=1.0,
+        #     # linewidth=1.5,
+        #     # markersize=1,
+        # )
+        superimposed_io_plot.axdict['B'].legend(loc="upper left", fontsize=7)
+    mpl.show()
     clickIODF.to_csv("ClickIO.csv")
 
-    spls = set(clickIODF["spl"])
-    clickIOWTlist = []
-    clickIOKOlist = []
+    # spls = set(clickIODF["spl"])
+    # clickIOWTlist = []
+    # clickIOKOlist = []
     # subjs = set(clickIODF['subject'])
     # print(clickIODF.head())
     # for icol in subjs:
     #     if clickIODF.at['group'] == 'WT':
     #         clickIOWT['subject']
 
-    plot_info.IOax[0].legend(loc="upper left", fontsize=7)
-    population_thrdata = P.plotClickThresholds(
-        allthrs, name="Click Thresholds", ax=plot_info.IOax[1]
-    )
+    # population_thrdata = self.plotClickThresholds(
+    #     allthrs, name="Click Thresholds", ax=plot_info.IOax[1]
+    # )
     return plot_info, clickIODF
 
 
-def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
+def do_tones(
+    dsname: str,
+    ABR_Datasets: dict = None,
+    configuration: dict = None,
+    coding: pd.DataFrame = None,
+    top_directory: Union[str, Path] = None,
+    dirs: Union[list, None] = None,
+    plot_info: object = None,
+    nplots: int = 1,
+    plot_index: int = 0,
+):
     """analyze the tone data
 
     Parameters
@@ -1465,71 +1550,137 @@ def do_tones(dsname: str, top_directory: Union[str, Path], dirs: list):
         This routine will look in each subdirectory for
         click data.
     """
-    if "toneselect" in list(ABR_Datasets[dsname].keys()):
-        tonesel = ABR_Datasets[dsname]["toneselect"]
-    else:
-        tonesel = [None] * len(dirs)
 
+    tonesel = {}
+    abr_dataframe = ABR_Reader.get_ABR_Dataset(datasetname=dsname, configuration=configuration)
+    print("ABR Dataframe Group: ", abr_dataframe["Group"])
     fofilename = Path(top_directory, "ToneSummary.pdf")
     allthrs = {}
-    with PdfPages(fofilename) as pdf:
-        for k, v in enumerate(tonesel):
-            P = ABR(Path(top_directory, dirs[k]), "tones", datasetname=dsname)
-            P.getToneData(select=tonesel[k], directory=dirs[k])
-            P.plotTones(select=tonesel[k], pdf=pdf)
-            allthrs[dirs[k]] = P.thrs
-    population_thrdata = P.plotToneThresholds(allthrs, name="Tone Thresholds")
-    print("pop thr data: ", population_thrdata)
-    print("Hz\tmean\tstd\t individual")
-    if population_thrdata[0] is not None:
-        for i, f in enumerate(population_thrdata[0].keys()):
-            print(
-                f"{f:.1f}\t{population_thrdata[1][i]:.1f}\t{population_thrdata[2][i]:.1f}",
-                end="",
-            )
-            for j in range(len(population_thrdata[0][f])):
-                print(f"\t{population_thrdata[0][f][j]:.1f}", end="")
-            print("")
+    IO_DF = []
+    print("dsname: ", dsname)
 
-    tthr_filename = Path(top_directory, "ToneThresholds.pdf")
-    mpl.savefig(tthr_filename)
-    mpl.show()
+    subjects = set(abr_dataframe.Subject)
+    print("Subjects: ", subjects)
+    print(f"Processing {len(dirs):d} directories")
+    color_map = make_colormaps.make_subject_colormap(subjects)
+    superimposed_io_plot = None
+    # if pdf is not None:
+    #     print("pdf defined")
+    #     with PdfPages(fofilename) as pdf:
+    #         for k, subject in enumerate(tonesel):
+    #             P = ABR_Reader(
+    #                 datapath=Path(top_directory),
+    #                 mode="tones",
+    #                 info=ABR_Datasets[dsname],
+    #                 datasetname=dsname,
+    #                 abr_dataframe=abr_dataframe,
+    #                 subject=subject,
+    #             )
+    #             # P = ABR(Path(top_directory, dirs[k]), "tones", datasetname=dsname)
+    #             if P.error:
+    #                 continue
+    #             P.getToneData(select=tonesel[subject], directory=dirs[subject])
+    #             P.plotTones(select=tonesel[subject], pdf=pdf)
+    #             allthrs[dirs[subject]] = P.thrs
+    # else:
+    for subject_number, subject in enumerate(subjects):
+        print("Subject: ", subject)
+        Group = coding[coding.Subject == subject].Group.values[0]
+        subject_data = ABR_Reader.ABR_Reader()
+        subject_data.setup(
+            datapath=Path(top_directory),
+            configuration=configuration,
+            mode="tones",
+            info=ABR_Datasets[dsname],
+            datasetname=dsname,
+            abr_dataframe=abr_dataframe,
+            subject=subject,
+            group=Group,
+            sex=coding[coding.Subject == subject].sex.values[0],
+            age=coding[coding.Subject == subject].age.values[0],
+        )
+        if subject_data.error:
+            continue  # skip this directory - probably none defined
+        runs = subject_data.abr_subject.Runs
+        if len(runs) == 0:
+            continue
+        # print("runs: ", runs.values[0])
+        tonesel[subject] = [
+            x.split(":")[1] for x in runs.values[0].split(",") if x.strip().startswith("tone:")
+        ]
+        nsel = 32
+        if subject_number == 0:
+            subject_data.summary_color_map = ABRF.makeColorMap(nsel, list(range(nsel)))
 
-
-# read the Coding file, which contains information about the ABR dates
-def get_coding_data(experiment):
-    print("experiment keys: ", list(experiment.keys()))
-    assert "databasepath" in experiment.keys()
-    print(experiment["databasepath"])
-    coding_file = Path(
-        experiment["databasepath"], experiment["directory"], experiment["coding_file"]
+        subject_data.getToneData(select=tonesel[subject], directory=subject_data.datadir)
+        IOdata, superimposed_io_plot = populate_io_plot(
+            subject_data,
+            tonesel[subject],
+            mode="tones",
+            datadir=dsname,
+            superimposed_io_plot=superimposed_io_plot,
+            plot_index=plot_index,
+            subject_number=subject_number,
+            color_map=color_map,
+        )
+        if IOdata is None:
+            continue
+        dirname = str(Path(subject_data.datadir).name)
+        allthrs[dirname] = subject_data
+        IO_DF.extend(IOdata)
+    toneIODF = pd.DataFrame(
+        IO_DF, columns=["Subject", "run", "spl", "freq", "ppio", "thrs", "Group"]
     )
-    assert coding_file.is_file()
-    coding = pd.read_excel(coding_file, sheet_name=experiment["coding_sheet"])
-    coding.rename(columns={"Animal_ID": "Subject"}, inplace=True)
-    print(coding.columns)
-    return coding
+    toneIODF["group_cat"] = toneIODF["Group"].astype("category")
+    filled_circle = MarkerStyle("o", fillstyle="full")
+    filled_square = MarkerStyle("s", fillstyle="full")
+
+    # population_thrdata = subject_data.plotToneThresholds(
+    #     allthrs, abr_dataframe, name="Tone Thresholds"
+    # )
+    # print("pop thr data: ", population_thrdata)
+    # print("Hz\tmean\tstd\t individual")
+    # if population_thrdata[0] is not None:
+    #     for i, f in enumerate(population_thrdata[0].keys()):
+    #         print(
+    #             f"{f:.1f}\t{population_thrdata[1][i]:.1f}\t{population_thrdata[2][i]:.1f}",
+    #             end="",
+    #         )
+    #         for j in range(len(population_thrdata[0][f])):
+    #             print(f"\t{population_thrdata[0][f][j]:.1f}", end="")
+    #         print("")
+    mpl.show()
+    tthr_filename = Path(top_directory, "ToneThresholds.pdf")
+    return plot_info, toneIODF
 
 
-def analyze_from_ABR_Datasets_main():
-    if len(sys.argv) > 1:
-        dsname = sys.argv[1]
-        mode = sys.argv[2]
+def find_stimuli(top_directory, mode="click"):
+    """find_stimuli Find directories that contain responses to
+    either click or tone stimuli.
+
+    Parameters
+    ----------
+    topdir : _type_
+        the directory under which to search for stimuli types
+    mode : str, optional
+        search for tones or clickes, by default "click"
+
+    Returns
+    -------
+    _type_
+        a list of directories that contain the stimuli type
+
+    Raises
+    ------
+    ValueError
+        bad mode definition
+    """
+    if mode in ["click", "clicks"]:
+        search = "*-n.txt"
+    elif mode in ["tone", "tones"]:
+        search = "*kHz.txt"
     else:
-        print("Missing command arguments; call: plotABRs.py datasetname [click, tone]")
-        exit(1)
-
-    if dsname not in list(ABR_Datasets.keys()):
-        print("These are the known datasets: ")
-        print("   ", list(ABR_Datasets.keys()))
-        raise ValueError("The selected dataset %s not found in our list of known datasets")
-    if mode not in ["tones", "clicks"]:
-        raise ValueError("Second argument must be tones or clicks")
-
-    print("Selected ABR Dataset: ", ABR_Datasets[dsname])
-    top_directory = Path(basedir, ABR_Datasets[dsname].directory)
-    print("\nTop_directory", top_directory)
-    # print(list(Path(top_directory).glob("*")))
+        raise ValueError(f"Mode is not known: {mode:s}, must be 'click' or 'tone'")
 
     dirs = [
         tdir
@@ -1540,13 +1691,61 @@ def analyze_from_ABR_Datasets_main():
         and not str(tdir.name).find("Unsure") >= 0
     ]
 
-    if mode == "clicks":
-        plot_info, IO_DF = do_clicks(dsname, top_directory, dirs, ABR_Datasets)
+    dirs_with_data = [d for d in dirs if len(list(Path(d).glob(search))) > 0]
+    total_dirs = len(dirs)
+    return dirs_with_data, total_dirs
 
-    elif mode == "tones":
-        do_tones(dsname, top_directory, dirs, ABR_Datasets)
-    else:
-        raise ValueError(f"Mode is not known: {mode:s}")
+
+def analyze_from_ABR_Datasets_main(
+    datasets: Union[list, None] = None,
+    configuration: dict = None,
+    mode: str = "clicks",
+    basedir: Union[Path, str, None] = None,
+    coding=None,
+    do_individual_plots: bool = True,
+):
+
+    for i, dsname in enumerate(datasets):
+        if dsname not in list(ABR_Datasets.keys()):
+            print("These are the known datasets: ")
+            print("   ", list(ABR_Datasets.keys()))
+            raise ValueError("The selected dataset %s not found in our list of known datasets")
+        if mode not in ["tones", "clicks"]:
+            raise ValueError("Second argument must be tones or clicks")
+
+        print("Selected ABR Dataset: ", ABR_Datasets[dsname])
+        top_directory = Path(basedir)  # Path(basedir, ABR_Datasets[dsname].directory)
+        print("\nTop_directory", top_directory)
+
+        dirs_with_data, total_dirs = find_stimuli(top_directory, mode=mode)
+
+        if mode == "clicks":
+            plot_info, IO_DF = do_clicks(
+                dsname=dsname,
+                configuration=configuration,
+                ABR_Datasets=ABR_Datasets,
+                coding=coding,
+                group_by="strain",  # "group", "genotype", "subject", "sex"
+                nplots=total_dirs,
+                top_directory=top_directory,
+                dirs=dirs_with_data,
+                do_individual_plots=do_individual_plots,
+            )
+
+        elif mode == "tones":
+            plot_info, IO_DF = do_tones(
+                dsname,
+                configuration=configuration,
+                ABR_Datasets=ABR_Datasets,
+                coding=coding,
+                top_directory=top_directory,
+                nplots=total_dirs,
+                dirs=dirs_with_data,
+            )
+        else:
+            raise ValueError(f"Mode is not known: {mode:s}")
+    if plot_info is not None:
+        mpl.show()
 
 
 def get_dirs(row, datatype="click", plot_info=None, nplots: int = 1, plot_index: int = 0):
@@ -1598,7 +1797,7 @@ def get_dirs(row, datatype="click", plot_info=None, nplots: int = 1, plot_index:
     return dirs, plot_info, IO_DF
 
 
-class Picker(QObject):
+class Picker:
     def __init__(self, space=None, data=None, axis=None):
         assert space in [None, 2, 3]
         self.space = space  # dimensions of plot (2 or 3)
@@ -1638,8 +1837,10 @@ def pick_handler(event, picker_func):
         return None
 
 
-def analyze_from_excel(datasets=["Tessa_NF107"], agerange=(20, 150)):
-    df = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")
+def analyze_from_excel(
+    datasets=["Tessa_NF107"], agerange=(20, 150), datatype: str = "click", group: str = "WT"
+):
+    df = pd.read_excel("ABRs.xlsx", sheet_name="Sheet1")
     df.rename(columns={"Group": "dataset"}, inplace=True)
     df["Group"] = ""  # nothing here...
     for dataset in datasets:  # for each of the datasets, analyze
@@ -1655,7 +1856,7 @@ def analyze_from_excel(datasets=["Tessa_NF107"], agerange=(20, 150)):
         for plot_index in range(nplots):
             dirs, plot_info, IO_DF = get_dirs(
                 row=dfn.iloc[plot_index],
-                datatype="click",
+                datatype=datatype,
                 plot_info=plot_info,
                 nplots=nplots,
                 plot_index=plot_index,
@@ -1827,6 +2028,13 @@ def _compute_threshold(row, baseline):
     """
     y = np.array(row["ppio"])
     x = np.array(row["spls"])
+    interp_thr, _ = fit_thresholds(x, y, baseline)
+    row["interpolated_threshold"] = interp_thr
+    row["maxabr"] = np.max(y)
+    return row
+
+
+def fit_thresholds(x, y, baseline):
     # Find where the IO function exceeds the baseline threshold
     # print(grand_df.iloc[i]['ppio'])
     # yd[xn] = p[1] / (1.0 + (p[2]/x[xn])**p[3])
@@ -1839,17 +2047,16 @@ def _compute_threshold(row, baseline):
     Hillmodel.set_param_hint("vmax", min=0.0, max=20.0)
     Hillmodel.set_param_hint("v50", min=0.0, max=100.0)
     Hillmodel.set_param_hint("n", min=1.0, max=5.0)
+
     params = Hillmodel.make_params(vmax=5, v50=50.0, n=2)
 
     result = Hillmodel.fit(y, params, x=x)
     yfit = result.best_fit
-    xs = np.linspace(0, 90, 91)
-    # print("yfit: ", yfit)
+    xs = np.linspace(1, 90, 91)
     ys = Hillmodel.eval(x=xs, params=result.params)
 
     # ithr = np.argwhere(np.array(y) > baseline)
     ithr = np.argwhere(np.array(ys) > baseline)
-    # print(len(ithr), np.max(y), baseline)
     if len(ithr) == 0:
         ithr = len(y) - 1
         # print("No threshold found: ", row.Subject)
@@ -1866,9 +2073,7 @@ def _compute_threshold(row, baseline):
     if interp_thr > 90.0:
         interp_thr = 100.0
     # print("interpthr: ", interp_thr)
-    row["interpolated_threshold"] = interp_thr
-    row["maxabr"] = np.max(y)
-    return row
+    return interp_thr, (xs, ys)
 
 
 def compute_io_stats(ppfd: object, Groups: list):
@@ -1921,7 +2126,7 @@ def set_groups(grand_df, coding_data: Union[pd.DataFrame, None] = None):
     grand_df["group"] = ""
     for i, row in grand_df.iterrows():
         subject = row["Subject"]
-        # print("subject: ", subject)
+        print("subject: ", subject)
         if pd.isnull(subject) or subject == "nan" or subject == "":
             grand_df.at[i, "group"] = "What?"
             continue
@@ -1932,29 +2137,32 @@ def set_groups(grand_df, coding_data: Union[pd.DataFrame, None] = None):
             grand_df.at[i, "ExpSPL"] = ExpSPL.values[0]
     return grand_df
 
+
 def relabel_xaxes(axp, experiment, angle=None):
     if "new_xlabels" in experiment.keys():
         xlabels = axp.get_xticklabels()
         for i, label in enumerate(xlabels):
             labeltext = label.get_text()
             if labeltext in experiment["new_xlabels"]:
-                xlabels[i] = experiment["new_xlabels"][labeltext]   
-        axp.set_xticklabels(xlabels)  # we just replace them... 
+                xlabels[i] = experiment["new_xlabels"][labeltext]
+        axp.set_xticklabels(xlabels)  # we just replace them...
     else:
         pass
         #  print("no new x labels available")
     if angle is not None:
         axp.set_xticks(axp.get_xticks(), axp.get_xticklabels(), rotation=45, ha="right")
 
+
 def relabel_yaxes_threshold(axp):
     ticksy = axp.get_yticklabels()
     ticksy[-1].set_text(f"$>$90")
     axp.set_yticklabels(ticksy)
 
+
 def place_legend(P, x, y, spacing=0.05, experiment=None):
     legend_text = {}
     lmap = experiment["group_legend_map"]
-    cols = experiment['plot_colors']
+    cols = experiment["plot_colors"]
     for l in lmap.keys():
         legend_text[lmap[l]] = cols[l]
 
@@ -1968,9 +2176,8 @@ def place_legend(P, x, y, spacing=0.05, experiment=None):
             transform=P.figure_handle.transFigure,
         )
 
-        
 
-def plot_io_from_excel(
+def plot_click_io_from_excel(
     datasets: list,
     groups: Union[list, None] = None,  # list of groups to analyze/plot
     agerange: Union[list, tuple] = (30, 105),
@@ -1978,7 +2185,7 @@ def plot_io_from_excel(
     picking: bool = False,
     thrplot=False,
 ):
-    df0 = pd.read_excel("ABRS.xlsx", sheet_name="Sheet1")  # get main database
+    df0 = pd.read_excel("ABRs.xlsx", sheet_name="Sheet1")  # get main database
 
     print("datasets: ", datasets)
     print("Groups on call to plot_io_from_excel: ", groups)
@@ -1998,7 +2205,7 @@ def plot_io_from_excel(
     # f, ax = mpl.subplots(1, 3, figsize=(9, 5))
     ax = PL.axarr.ravel()
 
-    colors = ["k", "r", "b", "c"]
+    # colors = ["k", "r", "b", "c"]
     markers = ["s", "o", "^", "D"]
     mfill = {"M": "full", "F": None}
 
@@ -2019,8 +2226,12 @@ def plot_io_from_excel(
     order = Experiment["plot_order"]["Group"]  # sort by group type
     p_df.to_csv("reorganized_data.csv")  # just so we can look at it separately
     p_df = p_df[p_df.group.isin(groups)]
+    #
+    # IO functions
+    #
     print("p_df: ", p_df.group.unique())
     print("order: ", order)
+    # Mean IO
     sns.lineplot(
         data=p_df,
         x="spls",
@@ -2031,8 +2242,9 @@ def plot_io_from_excel(
         errorbar="sd",
         ax=ax[0],
         linewidth=2.0,
-        # palette=Experiment['plot_colors'],
+        palette=Experiment["plot_colors"],
     )
+    # Individual IO
     sns.lineplot(
         data=p_df,
         x="spls",
@@ -2051,7 +2263,8 @@ def plot_io_from_excel(
     PH.nice_plot(ax[0], position=-0.03, direction="outward", ticklength=3)
     PH.referenceline(ax[0], 0.0)
     PH.set_axes_ticks(ax=ax[0], xticks=[20, 30, 40, 50, 60, 70, 80, 90])
-    ax[0].set_ylabel(f"N1-P1 ($\mu V$)")
+    label = r"N1-P1 ($\mu V$)"
+    ax[0].set_ylabel(f"{label:s}")
     ax[0].set_xlabel("Click (dB SPL)")
     ax[0].set_xlim(20.0, 100.0)
     ax[0].set_ylim(-0.5, 8)
@@ -2095,6 +2308,7 @@ def plot_io_from_excel(
     # print("Grand df head: ", grand_df.head())
     grand_df = grand_df[grand_df.group.isin(groups)]
     print("hue order threshold: ", order)
+    # thresholds,
     if not picking:
         sns.swarmplot(
             data=grand_df,
@@ -2102,7 +2316,9 @@ def plot_io_from_excel(
             y="interpolated_threshold",
             hue="group",
             hue_order=order,
+            palette=Experiment["plot_colors"],
             order=order,
+            linewidth=0.5,
             ax=ax[1],
             legend="auto",  # palette=Experiment['plot_colors'],
             picker=False,
@@ -2115,6 +2331,7 @@ def plot_io_from_excel(
             y="interpolated_threshold",
             hue="group",
             hue_order=order,
+            palette=Experiment["plot_colors"],
             order=order,
             saturation=0.25,
             orient="v",
@@ -2130,6 +2347,7 @@ def plot_io_from_excel(
             y="interpolated_threshold",
             hue="group",
             hue_order=order,
+            linewidth=0.5,
             order=order,
             ax=ax[1],
             legend=False,  # palette=Experiment['plot_colors'],
@@ -2148,6 +2366,9 @@ def plot_io_from_excel(
     # ax[1].set_xticklabels(groups)
     ax[1].set_xlabel("Treatment")
     print("hue order, maxabr: ", order)
+    #
+    # ABR Amplitude
+    #
     if not picking:
         sns.swarmplot(
             data=grand_df,
@@ -2155,6 +2376,8 @@ def plot_io_from_excel(
             y="maxabr",
             hue="group",
             hue_order=order,
+            palette=Experiment["plot_colors"],
+            linewidth=0.5,
             order=order,
             ax=ax[2],
             legend="auto",  # palette=Experiment['plot_colors'],
@@ -2169,7 +2392,8 @@ def plot_io_from_excel(
             hue="group",
             hue_order=order,
             order=order,
-            saturation=0.15,
+            palette=Experiment["plot_colors"],
+            saturation=0.25,
             orient="v",
             showfliers=False,
             linewidth=0.5,
@@ -2184,6 +2408,7 @@ def plot_io_from_excel(
             hue="group",
             hue_order=order,
             order=order,
+            linewidth=0.5,
             ax=ax[2],
             legend=False,  # palette=Experiment['plot_colors'],
             picker=True,
@@ -2195,7 +2420,8 @@ def plot_io_from_excel(
     )
     PH.nice_plot(ax[2], position=-0.03, direction="outward", ticklength=3)
     ax[2].set_ylim(0, 8)
-    ax[2].set_ylabel("Maximum ABR ($\mu V$)")
+    label = r"Maximum ABR ($\mu V$)"
+    ax[2].set_ylabel(f"{label:s}")
     # ax[2].set_xticklabels(groups)
     ax[2].set_xlabel("Treatment")
 
@@ -2209,6 +2435,8 @@ def plot_io_from_excel(
             y="interpolated_threshold",
             hue="group",
             hue_order=order,
+            palette=Experiment["plot_colors"],
+            linewidth=0.5,
             # order=order
             ax=ax[3],
             legend=False,  # palette=Experiment['plot_colors'],
@@ -2225,9 +2453,13 @@ def plot_io_from_excel(
     relabel_yaxes_threshold(ax[1])
     handles, previous_labels = ax[0].get_legend_handles_labels()
     # ax.legend(handles=handles, labels=new_labels)
-    ax[0].legend(handles=handles, labels=[v for k, v in Experiment['new_xlabels'].items()], bbox_to_anchor=(0.59, 1.05))
-        #   bbox_transform=PL.figure_handle.transFigure,)
-        #   zorder=200)
+    ax[0].legend(
+        handles=handles,
+        labels=[v for k, v in Experiment["new_xlabels"].items()],
+        bbox_to_anchor=(0.59, 1.05),
+    )
+    #   bbox_transform=PL.figure_handle.transFigure,)
+    #   zorder=200)
     # place_legend(PL, 0.85, 0.95, Experiment)
     # rint("\nThresholds:\n", grand_df[['dataset', 'run', 'threshold']])
     # some stats...
@@ -2251,9 +2483,38 @@ if __name__ == "__main__":
     # main()
     # analyze_from_excel(datasets= ['Tessa_BNE', 'Tessa_NF107Ai32', 'Tessa_CBA'])
 
-    plot_io_from_excel(
-        datasets=["Tessa_BNE"],
-        groups=["B", "A", "AA", "AAA"],
-        coding=get_coding_data(Experiment),
-        picking=False,
+    # plot_click_io_from_excel(
+    #     datasets=["Tessa_BNE"],
+    #     groups=["B", "A", "AA", "AAA"],
+    #     coding=get_coding_data(Experiment),
+    #     picking=False,
+    # )
+    from ABR_Datasets import ABR_Datasets
+
+    dataset = "Reggie_NIHL"
+    experimentname = "GlyT2_NIHL"
+
+    ds = ABR_Datasets[dataset]
+    if ds.config is not None:
+        configurations = get_configuration(ds.config)
+        if experimentname not in configurations[0]:
+            raise ValueError(f"Experiment {experimentname:s} not found in configuration file")
+
+        configuration = configurations[1][experimentname]
+        basedir = configuration["abrpath"]
+        # print("basedir: ", basedir)
+        coding = ABR_Reader.get_coding_data(configuration)
+        # print(coding)
+    else:
+        basedir = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/"
+        coding = None
+        configuration = None
+
+    analyze_from_ABR_Datasets_main(
+        datasets=[dataset],  # datasets to analyze
+        configuration=configuration,  # this is the configuration file
+        mode="clicks",
+        basedir=basedir,
+        coding=coding,
+        do_individual_plots=False,
     )

@@ -1,3 +1,11 @@
+###########################################################
+# THIS FILE HAS BEEN CONVERTED TO AN EXCEL FILE (with convert_datasets_to_Excel.py)
+# AND IS NO LONGER VALID.
+# ANY ATTEMPT TO IMPORT IT WILL RAISE AN ERROR
+###########################################################
+
+raise ValueError("This file is no longer valid. It has been converted to an Excel file, ABRS.xlsx"
+                 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Union

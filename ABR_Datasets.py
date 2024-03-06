@@ -31,10 +31,11 @@ Each entry in the nested dictionary is structured as follows:
 "codefile = the name of a python file that has additional information about the animal codes 
     (IDs, etc.). 
 """
-from src.ABR_dataclasses import ABR_Data
+from src.abr_dataclasses import ABR_Data
 
 ABR_Datasets = {
     "NrCAMKO": ABR_Data(
+        config=None,
         directory ="Tessa/Coate-NrCAM-ABRs/KO",
         invert = True,
         clickselect = [["0849"], None, None, None, None, None, None, None],
@@ -43,6 +44,7 @@ ABR_Datasets = {
         minlat = 2.2,
     ),
     "NrCAMWT": ABR_Data(
+        config = None,
         directory ="Tessa/Coate-NrCAM-ABRs/WT",
         invert = True,
         term = "\r",
@@ -128,6 +130,7 @@ ABR_Datasets = {
         invert = True,
     ),
     "Tessa_NF107": ABR_Data(
+        config="/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg",
         directory ="Tessa/Tessa_ABR_data/NF107",
         term = "\r",
         minlat = 2.4,
@@ -136,6 +139,7 @@ ABR_Datasets = {
         markers = {"NF107": ("s", "end"), "NF107_Exposed": ("o", "end"), "Unsure":  ("x", "any")},
     ),
     "TessaNF107Ai32": ABR_Data(
+        config = "/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg",
         directory ="Tessa/Tessa_ABR_data/NF107Ai32",
         term = "\r",
         minlat = 2.4,
@@ -144,6 +148,7 @@ ABR_Datasets = {
         markers = {"NF107": ("s", "end"), "NF107_Exposed": ("o", "end"), "Unsure": ("x", "any")},
     ),
     "Tessa_NF107Ai32": ABR_Data(
+        config="/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg",
         directory ="Tessa/NF107Ai32",
         term = "\r",
         minlat = 2.4,
@@ -153,6 +158,7 @@ ABR_Datasets = {
         codefile= ""
     ),
     "Tessa_BNE": ABR_Data(
+        config="/Users/pbmanis/Desktop/Python/mrk-nf107/config/experiments.cfg",
         directory ="Tessa/Tessa_ABR_data/BNE",
         term = "\r",
         minlat = 2.4,
@@ -207,14 +213,42 @@ ABR_Datasets = {
         invert = True,
     ),
 
-    "Reggie": ABR_Data(
-        directory ="Reggie_E", 
+    "Reggie_B2sMath1Cre": ABR_Data(
+        directory ="Reggie_B2sMath1Cre", 
         term = "\r",
         minlat = 2.2, 
         invert = True,
         sample_freq = 50000.0, 
         markers = {"WT": ("s", "end"), "KO": ("o", "end"), "Unsure": ("x", "any")},
     ),
+    "Reggie_CBA_Age": ABR_Data(
+        directory ="Reggie_CBA_Age", 
+        term = "\r",
+        minlat = 2.2, 
+        invert = True,
+        sample_freq = 50000.0, 
+        config="/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg",
+        # markers = {"WT": ("s", "end"), "KO": ("o", "end"), "Unsure": ("x", "any")},
+    ),
+    "Reggie_NIHL": ABR_Data(
+        directory ="Reggie_NIHL", 
+        term = "\r",
+        minlat = 2.2, 
+        invert = True,
+        sample_freq = 50000.0, 
+        config="/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg",
+        # markers = {"WT": ("s", "end"), "KO": ("o", "end"), "Unsure": ("x", "any")},
+    ),
+    "Reggie_PreNoiseExp": ABR_Data(
+        directory ="Reggie_PreNoiseExp", 
+        term = "\r",
+        minlat = 2.2, 
+        invert = True,
+        sample_freq = 50000.0, 
+        config="/Users/pbmanis/Desktop/Python/RE_CBA/config/experiments.cfg",
+        # markers = {"WT": ("s", "end"), "KO": ("o", "end"), "Unsure": ("x", "any")},
+    ),
+
 }
 
 
