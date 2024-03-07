@@ -49,12 +49,12 @@ def get_ABR_Dataset(datasetname, configuration):
     # print("Configuration: ", configuration)
     df_excel = df_excel[df_excel.Dataset == datasetname]  # reduce to just this dataset
     df_excel.reindex()
-    print("ABR_Reader: get_ABR_dataset: dataset name: ", df_excel['Dataset'])
     if "Subject" not in df_excel.columns and "Animal_identifier" in df_excel.columns:
         df_excel.rename({"Animal_identifier": "Subject"}, axis=1, inplace=True)
     df_excel.rename({"Treatment": "Group"}, axis=1, inplace=True)
-    group_name = configuration["coding_name"]
-    if configuration["coding_file"] is not None:
+    group_name = 'Control'
+    if configuration is not None and configuration["coding_file"] is not None:
+        group_name = configuration["coding_name"]
         print("     Configuration coding file: ", configuration["coding_file"])
         coding = get_coding_data(configuration)  # read the coding file
         if "Animal_ID" in coding.columns:
@@ -148,7 +148,7 @@ class ABR_Reader:
         self.info = info
         self.subject = subject
         self.group = group
-        self.strain = strain
+        self.Strain = strain
         if self.subject is None:
             CP.cprint("r", f"Subject field is empty, cannot select data")
             raise ValueError()
@@ -160,11 +160,9 @@ class ABR_Reader:
 
         # reduce incoming dataframe to the current subject
         else:
-            CP.cprint("c", f"    Subject is: {self.subject:s}")
-        
-            # print("    abr_reader.setup: dataframe: ", self.abr_dataframe.head())
+            CP.cprint("c", f"    ABR_Reader: Subject is: {self.subject:s}")
             self.abr_subject = self.abr_dataframe[self.abr_dataframe.Subject == self.subject]
-            # print("    abr_reader.setup: subject data: ", self.abr_subject)
+
             self.datadir = self.abr_subject.DataDirectory.values[0]
             if "Group" in self.abr_subject.columns:
                 self.group = self.abr_subject.Group.values[0]
@@ -174,25 +172,29 @@ class ABR_Reader:
                 self.SPL = self.abr_subject.SPL.values[0]
             else:
                 self.SPL = 0.0
-            if "strain" in self.abr_subject.columns:
-                self.strain = self.abr_subject.strain.values[0]
+            print("original strain: ", self.Strain)
+            if "Strain" in self.abr_subject.columns:
+                self.Strain = self.abr_subject.Strain.values[0]
+            print("strain is: ", self.Strain)
+
             dset = self.abr_subject.Dataset.values[0]
             def set_dataset(row, datasetname):
                 row.Dataset = datasetname
             if pd.isnull(dset):
                 self.abr_subject.apply(set_dataset, axis=1, datasetname = self.datasetname) # self.abr_subject.loc["Dataset"] = self.datasetname
-            # print(f"    abr_reader.setup: has Datadir:  {self.datadir!s}")
+            print(f"    br_reader.setup: has Datadir:  {self.datadir!s}")
             if pd.isnull(self.datadir) or len(self.datadir) == 0:
                 CP.cprint(
                     "r",
                     f"Datadir is empty for subject {self.subject} in dataframe:\n{self.abr_subject!s} ",
                 )
+                CP.cprint("r", f"    Likely cause is no ABR was found for this subject in the ABRs database")
                 self.error = True
                 return
 
         CP.cprint("c", f"    ABR_Reader: datasetname = {self.datasetname!s}")
         self.coding = None  # coding data frame, if it exists.
-        if configuration["coding_file"] is not None:
+        if configuration is not None and configuration["coding_file"] is not None:
             coding = get_coding_data(configuration)
             self.coding = coding[coding.Subject == self.subject]
 
@@ -246,6 +248,15 @@ class ABR_Reader:
         self.superIOLabels = []
         return
 
+    def print(self):
+        """print some subject information
+        """
+        print(f"Subject: {self.subject:s}")
+        print(f"Group: {self.group:s}")
+        print(f"Strain: {self.Strain!s}")
+        print(f"Sample Frequency: {self.sample_freq:.2f} Hz")
+        print("="*80)
+
     def characterize_abr_datafiles(self, directory):
         """
         Look at the directory in datapath, and determine what datasets are
@@ -291,6 +302,7 @@ class ABR_Reader:
                 "datadir": self.datadir,
                 "Subject": self.subject,
                 "group": self.group,
+                "Strain": self.Strain,
                 "SPL": self.SPL,
             }
 
@@ -302,7 +314,7 @@ class ABR_Reader:
                 "Subject": self.subject,
                 "datadir": self.datadir,
                 "group": self.group,
-                "strain": self.strain,
+                "Strain": self.Strain,
                 "SPL": self.SPL,
             }
             # if self.mode == "clicks":
@@ -528,6 +540,7 @@ class ABR_Reader:
 
             spls = self.clickmaps[s]["SPLs"]  # get spls
             if configuration is not None and 'plot_symbols' in configuration.keys():
+                print(self.clickmaps[s]['group'])
                 markerstyle = configuration['plot_symbols'][self.clickmaps[s]['group']]
             self.clickdata[s] = {
                 "waves": waves,
@@ -535,7 +548,7 @@ class ABR_Reader:
                 "spls": spls,
                 "marker": markerstyle,
                 "group": self.clickmaps[s]["group"],
-                "strain": self.clickmaps[s]['strain'],
+                "Strain": self.clickmaps[s]["Strain"],
                 "Subject": self.clickmaps[s]["Subject"],
                 "SPL": self.clickmaps[s]["SPL"],
             }
