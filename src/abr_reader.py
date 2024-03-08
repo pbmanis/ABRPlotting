@@ -9,9 +9,9 @@ import pylibrary.tools.cprint as CP
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 import pprint
-import abr_dataclasses as ABR_DC
+import src.abr_dataclasses as ABR_DC
 from src.get_configuration import get_configuration
-from abr_funcs import ABRFuncs
+from src.abr_funcs import ABRFuncs
 import src.make_colormaps as make_colormaps
 
 ABRF = ABRFuncs()
