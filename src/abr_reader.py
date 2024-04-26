@@ -99,11 +99,22 @@ def get_coding_data(configuration):
 
 class ABR_Reader:
     """
-    Read an a single ABR data set from the matlab program
+    Read an a single ABR data set from either the text files,
+    or the hdf file.
     Provides functions to plot the traces.
     """
     def __init__(self):
-        pass
+        self.datapath = None
+        self.datasetname = None
+        self.abr_dataframe = None
+        self.info = None
+        self.subject = None
+        self.group = "Control"
+        self.Strain = "ND"
+        self.sample_freq = None
+        self.lpf = 3000
+        self.hpf = 300
+        self.invert = False
 
     def setup(
         self,
@@ -162,7 +173,8 @@ class ABR_Reader:
         else:
             CP.cprint("c", f"    ABR_Reader: Subject is: {self.subject:s}")
             self.abr_subject = self.abr_dataframe[self.abr_dataframe.Subject == self.subject]
-
+            print("self.abr_subject: ", self.abr_subject)
+            
             self.datadir = self.abr_subject.DataDirectory.values[0]
             if "Group" in self.abr_subject.columns:
                 self.group = self.abr_subject.Group.values[0]
@@ -182,7 +194,7 @@ class ABR_Reader:
                 row.Dataset = datasetname
             if pd.isnull(dset):
                 self.abr_subject.apply(set_dataset, axis=1, datasetname = self.datasetname) # self.abr_subject.loc["Dataset"] = self.datasetname
-            print(f"    br_reader.setup: has Datadir:  {self.datadir!s}")
+            print(f"    abr_reader.setup: has Datadir:  {self.datadir!s}")
             if pd.isnull(self.datadir) or len(self.datadir) == 0:
                 CP.cprint(
                     "r",
@@ -201,8 +213,8 @@ class ABR_Reader:
         if self.info.sample_freq is not None:
             self.sample_freq = self.info.sample_freq  # Hz
         else:
-            self.sample_freq = 100000.0
-
+            self.sample_freq = 100000.0/2.0
+        print("Sample freq: ", self.sample_freq)
         self.sample_rate = (
             1.0 / self.sample_freq
         )  # standard interpolated sample rate for matlab abr program: 10 microsecnds
@@ -257,7 +269,7 @@ class ABR_Reader:
         print(f"Sample Frequency: {self.sample_freq:.2f} Hz")
         print("="*80)
 
-    def characterize_abr_datafiles(self, directory):
+    def characterize_abr_datafiles(self, directory, datapath=None, codefile=None, configuration=None):
         """
         Look at the directory in datapath, and determine what datasets are
         present. A dataset consists of at least 3 files: yyyymmdd-HHMM-SPL.txt :
@@ -281,6 +293,11 @@ class ABR_Reader:
         Nothing
         """
 
+        if self.datapath is None and datapath is not None:
+            self.datapath = Path(datapath)
+        else:
+            raise ValueError("ABR_Reader.characterize_abr_datafiles: No datapath provided")
+        
         # x = ABRF.get_matlab()
         self.spls = ABRF.getSPLs(Path(self.datapath, directory))
         self.freqs = ABRF.getFreqs(Path(self.datapath, directory))
@@ -303,7 +320,7 @@ class ABR_Reader:
                 "Subject": self.subject,
                 "group": self.group,
                 "Strain": self.Strain,
-                "SPL": self.SPL,
+                "SPL": self.spls, # self.SPL,
             }
 
         self.clickmaps = {}
@@ -315,7 +332,7 @@ class ABR_Reader:
                 "datadir": self.datadir,
                 "group": self.group,
                 "Strain": self.Strain,
-                "SPL": self.SPL,
+                "SPL": self.spls, # self.SPL,
             }
             # if self.mode == "clicks":
             #     if self.abr_dataframe is not None:
@@ -391,6 +408,9 @@ class ABR_Reader:
 
         """
         # handle missing files.
+        if self.sample_freq is None:
+            self.sample_freq = 100000.0/2.0
+            
         pos_file = Path(datapath, fnamepos)
         neg_file = Path(datapath, fnameneg)
         if not pos_file.is_file():
@@ -424,7 +444,7 @@ class ABR_Reader:
             engine="python",
         )
         npoints = len(posf[cnames[0]])
-        tb = np.linspace(0, npoints * self.sample_rate * 1000.0, npoints)
+        tb = np.linspace(0, npoints * (1./self.sample_freq) * 1000.0, npoints)
         if np.max(tb) > 25.0:
             u = np.where(tb < 25.0)
             tb = tb[u]

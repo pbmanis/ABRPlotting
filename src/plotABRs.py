@@ -1205,10 +1205,10 @@ if __name__ == "__main__":
     # )
     from ABR_Datasets import ABR_Datasets
 
-    # dataset = "Reggie_CBA_Age"
-    # experimentname = "CBA_Age"
-    dataset = "Tessa_BNE"  #
-    experimentname = "NF107Ai32_NIHL"
+    dataset = "Reggie_CBA_Age"
+    experimentname = "CBA_Age"
+    # dataset = "Tessa_BNE"  #
+    # experimentname = "NF107Ai32_NIHL"
     # dataset = "Reggie_NIHL"
     # experimentname = "NIHL"
     # dataset = "Tessa_VGAT"

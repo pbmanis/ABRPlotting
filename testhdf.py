@@ -1,6 +1,7 @@
 
 
-fn = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_CBA_Age/CBA_F_p18/20230124-1238.h5"
+directory = "/Volumes/Pegasus_002/ManisLab_Data3/abr_data/Reggie_CBA_Age/CBA_F_p18"
+fn = "20230124-1238.h5"
 import json
 from pathlib import Path
 
@@ -12,16 +13,22 @@ import src.abr_reader as ABRR
 import src.abr_funcs as ABRF
 
 Reader = ABRR.ABR_Reader()
-Reader.setup(datapath=Path(fn).parent, configuration=None)
-Reader.characterize_abr_datafiles(configuration=None)
+# Reader.setup(datapath=Path(fn).parent, configuration=None)
+Reader.datadir = directory
+Reader.characterize_abr_datafiles(datapath=Path(directory).parent, directory=Path(directory).name,
+                                  configuration=None)
 w, t = Reader.read_dataset(
-        datapath = Path(fn).parent,  # path to the data (.txt files are in this directory)
+        datapath = directory,  # path to the data (.txt files are in this directory)
         datatype = "tone",
         fnamepos = "20230124-1207-n-16000.000.txt",
         fnameneg = "20230124-1207-p-16000.000.txt",
         lineterm="\r",
     )
 print(w.shape)
+for i in range(w.shape[0]):
+    mpl.plot(t, w[i,:])
+mpl.plot(t, np.mean(w, axis=0), 'k', linewidth=2)
+mpl.show()
 exit()
 
 f = h5py.File(fn, 'r')
